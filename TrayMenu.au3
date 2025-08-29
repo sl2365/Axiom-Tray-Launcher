@@ -7,12 +7,14 @@
 #include "Favorites.au3"
 #include "ScanFolders.au3"
 #include "SymLinks.au3"
+#include "Updates.au3"
 
 Global $g_TrayMenuTitle, $g_TrayReload, $g_TraySettings, $g_TrayGenLinks, $g_TraySeparator1, $g_TraySeparator2, $g_TraySeparator3, $g_TrayExit
 Global $g_CategoryMenus = ObjCreate("Scripting.Dictionary")
 Global $g_TrayItemMap = ObjCreate("Scripting.Dictionary")
 Global $g_TrayScan
 Global $g_TrayCreateGlobalLinks, $g_TrayRemoveGlobalLinks
+Global $g_TrayCheckUpdates ; <-- ADDED: Menu item for update check
 
 Local $globalIni = _ResolvePath("App\Settings.ini", @ScriptDir)
 
@@ -101,6 +103,8 @@ Func _TrayMenu_Build(ByRef $categories, ByRef $apps, ByRef $settings)
     ; --- Add buttons for global symlink management ---
     $g_TrayCreateGlobalLinks = TrayCreateItem("➕ Create Global Symlinks", $g_TrayMenuTitle)
     $g_TrayRemoveGlobalLinks = TrayCreateItem("➖ Remove Global Symlinks", $g_TrayMenuTitle)
+    ; --- Add Check for Updates button ---
+    $g_TrayCheckUpdates = TrayCreateItem("🔍 Check for Updates", $g_TrayMenuTitle) ; ADDED
 
     ; --- Determine what to show ---
     Local $hasCategories = False
@@ -197,6 +201,7 @@ Func TrayUI_Destroy()
     If IsDeclared("g_TraySeparator2") And $g_TraySeparator2 Then TrayItemDelete($g_TraySeparator2)
     If IsDeclared("g_TraySeparator3") And $g_TraySeparator3 Then TrayItemDelete($g_TraySeparator3)
     If IsDeclared("g_TrayExit") And $g_TrayExit Then TrayItemDelete($g_TrayExit)
+    If IsDeclared("g_TrayCheckUpdates") And $g_TrayCheckUpdates Then TrayItemDelete($g_TrayCheckUpdates) ; ADDED
 
     $g_TrayItemMap.RemoveAll()
     $g_CategoryMenus.RemoveAll()
@@ -205,7 +210,6 @@ EndFunc
 Func _TrayMenu_AppLauncher($appName, $catIni)
     ; --- Create per-app/category symlinks before launch ---
     _SymLink_CreateAppSymlinks($catIni, $appName, $globalIni)
-
     ; --- Read all app variables ---
     Local $keys = IniReadSection($catIni, $appName)
     Local $vars = ObjCreate("Scripting.Dictionary")
@@ -292,7 +296,6 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
     If $vars.Exists("Sandboxie") Then $sandboxie = $vars.Item("Sandboxie")
     If $vars.Exists("SandboxName") Then $sandboxName = $vars.Item("SandboxName")
     Local $settingsIni = @ScriptDir & "\App\Settings.ini"
-
     ; --- Strip off executable path if present at start of Arguments ---
     If StringLeft($args, StringLen($exe)) = $exe Then
         $args = StringTrimLeft($args, StringLen($exe))
@@ -304,7 +307,6 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
             $args = StringStripWS($args, 1)
         EndIf
     EndIf
-
     ; --- Launch ---
     Local $appExited = False
     If $sandboxie = "1" And $sandboxName <> "" Then
@@ -324,7 +326,6 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
             $appExited = True
         EndIf
     EndIf
-
     ; --- Remove per-app/category symlinks after app closes ---
     If $appExited Then
         _SymLink_RemoveAppSymlinks($catIni, $appName, $globalIni)
@@ -350,8 +351,9 @@ Func _TrayMenu_HandleEvents(ByRef $settings, ByRef $categories, ByRef $apps)
             Local $globalIni = _ResolvePath("App\Settings.ini", @ScriptDir)
             _SymLink_ManualRemoveGlobalSymlinks($globalIni)
             MsgBox(64, "Global Symlinks", "Global symlinks removed.")
+        Case $g_TrayCheckUpdates
+            Updates_Check(True)
         Case $g_TrayExit
-            ; Remove global symlinks on exit ---
             _SymLink_RemoveGlobalSymlinks($globalIni)
             Exit
         Case Else
