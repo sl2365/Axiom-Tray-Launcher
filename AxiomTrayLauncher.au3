@@ -8,7 +8,7 @@
 #AutoIt3Wrapper_Res_File_Add=SettingsTemplate.ini, SettingsTemplate.ini, CUSTOM
 #AutoIt3Wrapper_Res_Fileversion_First_Increment=Y
 #AutoIt3Wrapper_Res_FileVersion_AutoIncrement=Y
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.211
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.234
 #AutoIt3Wrapper_Res_ProductVersion=3.3.16.1
 #AutoIt3Wrapper_Res_Description=Axiom Tray Launcher
 #AutoIt3Wrapper_Res_LegalCopyright=sl23
@@ -25,6 +25,10 @@
 #include "GuiSettings.au3"
 #include "Utils.au3"
 
+
+DirRemove(@ScriptDir & "\App\_updater", 1) ; CLEANUP UPDATE FOLDER
+Updates_Check() ; AUTOMATIC UPDATE CHECK ON STARTUP
+
 Opt("TrayMenuMode", 3)
 Global $g_AppDir = @ScriptDir & "\App"
 Global $g_SettingsFile = $g_AppDir & "\Settings.ini"
@@ -34,12 +38,13 @@ If Not FileExists($g_AppDir) Then
     DirCreate($g_AppDir)
 EndIf
 
-; Validate and load settings
+; Validate and load settings then Load categories and apps from disk, build tray menu
 Global $g_Settings = _Config_LoadAndValidate($g_SettingsFile)
-; Load categories and apps from disk, build tray menu
 Global $g_Categories = _ScanFolders_LoadCategoriesFromIni()
 Global $g_Apps = _ScanFolders_GetAppsWithButtonText($g_Categories)
 Global $g_TrayItems = _TrayMenu_Build($g_Categories, $g_Apps, $g_Settings)
+
+;~ MsgBox(0, "File Version", _Updates_GetFileVersion()) ; debug to show file version.
 
 ; Main event loop
 While 1
