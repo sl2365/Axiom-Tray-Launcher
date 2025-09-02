@@ -8,7 +8,8 @@
 #include "ScanFolders.au3"
 #include "SymLinks.au3"
 #include "Updates.au3"
-
+ 
+Global $hSettingsGUI, $g_OKBtn
 Global $g_TrayMenuTitle, $g_TrayReload, $g_TraySettings, $g_TrayGenLinks, $g_TraySeparator1, $g_TraySeparator2, $g_TraySeparator3, $g_TrayExit
 Global $g_CategoryMenus = ObjCreate("Scripting.Dictionary")
 Global $g_TrayItemMap = ObjCreate("Scripting.Dictionary")
