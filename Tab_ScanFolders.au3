@@ -5,6 +5,7 @@
 #include <WindowsConstants.au3>
 #include <GuiListView.au3>
 
+Global $guiW, $guiH, $listviewX, $listviewY, $btnW, $btnH, $footer_gap
 Global $g_ScanListView, $g_ScanFolderEdit, $g_ScanDepthCombo, $g_ScanExtEdit
 Global $g_ScanAddBtn, $g_ScanDeleteBtn, $g_ScanSaveBtn, $g_ScanSelectedIdx = -1
 Global $g_SettingsIni = @ScriptDir & "\App\Settings.ini"
