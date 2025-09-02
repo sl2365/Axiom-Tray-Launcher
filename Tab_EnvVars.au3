@@ -1,4 +1,4 @@
-; EnvVarsListView.au3
+; Tab_EnvVars.au3
 ; Displays environment variables in a ListView with descriptions, allows copying variable name
 ; When a variable is copied, shows a green "Copied!" label for 1 second.
 
