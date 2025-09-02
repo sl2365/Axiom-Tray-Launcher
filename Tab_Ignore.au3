@@ -3,6 +3,7 @@
 #include-once
 #include "TrayMenu.au3"
 
+Global $guiW, $guiH, $listviewX, $listviewY, $btnW, $btnH, $footer_gap
 Global $g_IgnoreListFile = @ScriptDir & "\App\IgnoreList.ini"
 Global $g_IgnoreTabListView, $g_IgnoreEdit, $g_IgnoreBrowseBtn, $g_IgnoreAddBtn, $g_IgnoreDeleteBtn
 Global $g_IgnoreItems[0][2]
