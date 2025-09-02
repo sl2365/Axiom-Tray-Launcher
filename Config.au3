@@ -43,7 +43,9 @@ Func _Config_WriteDefaults($settingsFile)
     EndIf
     Local $text = _
         "[GLOBAL]" & @CRLF & _
+        "Theme=0" & @CRLF & _
         "UpdateOnStart=0" & @CRLF & _
+        "LastUpdateCheck=" & @CRLF & _
         "SandboxiePath=" & @CRLF & _
         @CRLF & _
         "[ScannedPaths]" & @CRLF & _
