@@ -6,6 +6,61 @@
 #include "TrayMenu.au3"
 #include "Utils.au3"
 
+; ---------------------- IgnoreList Support -------------------------
+Global $g_IgnoreList = _ScanFolders_LoadIgnoreList()
+
+Func _ScanFolders_LoadIgnoreList()
+    Local $ignoreArr = FileReadToArray(_ResolvePath("App\IgnoreList.ini", @ScriptDir))
+    Local $dict = ObjCreate("Scripting.Dictionary")
+    If IsArray($ignoreArr) Then
+        For $i = 0 To UBound($ignoreArr) - 1
+            Local $entry = StringStripWS($ignoreArr[$i], 3)
+            If $entry <> "" Then $dict.Item(StringLower($entry)) = True
+        Next
+    EndIf
+    Return $dict
+EndFunc
+
+Func _ScanFolders_IsIgnored($fullPath)
+    Local $resolvedFullPath = _ResolvePath($fullPath, @ScriptDir)
+    Local $pathLower = StringLower($resolvedFullPath)
+    Local $fileName = _GetFileName($fullPath)
+    Local $fileLower = StringLower($fileName)
+    Local $parentFolder = _GetParentFolder($fullPath)
+    Local $parentPlusFile = ""
+    If $parentFolder <> "" Then
+        $parentPlusFile = StringLower($parentFolder & "\" & $fileName)
+    EndIf
+    ; Also check resolved parent+file
+    Local $resolvedParentPlusFile = ""
+    If $parentFolder <> "" Then
+        $resolvedParentPlusFile = StringLower(_ResolvePath($parentFolder & "\" & $fileName, @ScriptDir))
+    EndIf
+    ; Check against all forms in ignore list
+    If $g_IgnoreList.Exists($pathLower) Then Return True
+    If $parentPlusFile <> "" And $g_IgnoreList.Exists($parentPlusFile) Then Return True
+    If $resolvedParentPlusFile <> "" And $g_IgnoreList.Exists($resolvedParentPlusFile) Then Return True
+    If $g_IgnoreList.Exists($fileLower) Then Return True
+    Return False
+EndFunc
+
+Func _GetParentFolder($fullPath)
+    Local $parts = StringSplit($fullPath, "\")
+    If IsArray($parts) And $parts[0] > 1 Then
+        Return $parts[$parts[0] - 1]
+    EndIf
+    Return ""
+EndFunc
+
+Func _MakePortablePath($path, $baseDir)
+    ; Replace drive letter with ? if same as baseDir
+    Local $driveBase = StringLeft($baseDir, 2)
+    If StringLeft($path, 2) = $driveBase Then
+        Return "?:" & StringTrimLeft($path, 2)
+    EndIf
+    Return $path
+EndFunc
+
 Func _LoadScanPathsFromINI($iniFile)
     Local $dict = ObjCreate("Scripting.Dictionary")
     Local $section = IniReadSection($iniFile, "ScannedPaths")
@@ -18,6 +73,7 @@ Func _LoadScanPathsFromINI($iniFile)
 EndFunc
 
 Func _ScanFolders_Scan($settings)
+    $g_IgnoreList = _ScanFolders_LoadIgnoreList() ; Reload ignore list at scan time for freshness
     Local $categories = ObjCreate("Scripting.Dictionary")
     Local $scanned = _LoadScanPathsFromINI(_ResolvePath("App\Settings.ini", @ScriptDir))
     Local $catNames = ObjCreate("Scripting.Dictionary")
@@ -53,6 +109,7 @@ Func _ScanFolders_Scan($settings)
 EndFunc
 
 Func _ScanFolders_ScanSingle($scanPath, $depth, $filters, $catName)
+    $g_IgnoreList = _ScanFolders_LoadIgnoreList() ; Reload ignore list for single scan
     Local $apps = _ScanFolders_DiscoverApps($scanPath, $depth, $filters)
     Local $newApps = 0
     Local $catIni = _ResolvePath("App\" & $catName & ".ini", @ScriptDir)
@@ -70,6 +127,7 @@ Func _ScanFolders_ScanSingle($scanPath, $depth, $filters, $catName)
 EndFunc
 
 Func _ScanFolders_AndShowResults($settings)
+    $g_IgnoreList = _ScanFolders_LoadIgnoreList() ; Reload ignore list for scan
     Local $scanned = _LoadScanPathsFromINI(_ResolvePath("App\Settings.ini", @ScriptDir))
     Local $results = ""
     Local $notFound = ""
@@ -121,7 +179,6 @@ Func _ScanFolders_AndShowResults($settings)
     Local $msg = "Scanned folders:" & @CRLF & $results
     If $notFound <> "" Then $msg &= @CRLF & $notFound
     MsgBox(64, "Scan Complete", $msg)
-    _TrayMenu_RefreshFull()
 EndFunc
 
 Func _ScanFolders_DiscoverApps($scanPath, $depth, $filters)
@@ -141,6 +198,12 @@ Func _ScanFolders_ScanFolderNative($folder, ByRef $apps, $maxDepth, $curDepth, $
         If @error Then ExitLoop
         Local $fullPath = $folder & "\" & $file
         Local $attrib = FileGetAttrib($fullPath)
+        ; ----------- Flexible ignore check -------------
+        If _ScanFolders_IsIgnored($fullPath) Then
+            ; ConsoleWrite("IGNORED: " & $fullPath & @CRLF)
+            ContinueLoop
+        EndIf
+        ; ----------- End ignore check ------------------
         If StringInStr($attrib, "D") Then
             If $file <> "." And $file <> ".." And $curDepth < $maxDepth _
                 And Not StringInStr($attrib, "H") _
@@ -188,23 +251,19 @@ Func _ScanFolders_WriteOrUpdateCategoryIni($catIni, $apps, $catName)
         If Not $existingDict.Exists($appName) Then
             FileWrite($hFile, "[" & $appName & "]" & @CRLF)
             FileWrite($hFile, "ButtonText=" & $appName & @CRLF)
-            FileWrite($hFile, "RunFile=" & $apps.Item($appName) & @CRLF)
+            FileWrite($hFile, "RunFile=" & _MakePortablePath($apps.Item($appName), @ScriptDir) & @CRLF)
             FileWrite($hFile, "RunAsAdmin=0" & @CRLF)
-            FileWrite($hFile, "Splash=" & @CRLF)
-            FileWrite($hFile, "SplashWait=0" & @CRLF)
             FileWrite($hFile, "WorkDir=" & @CRLF)
             FileWrite($hFile, "Arguments=" & @CRLF)
-;~             FileWrite($hFile, "NetAccess=1" & @CRLF)
-;~             FileWrite($hFile, "Move1=" & @CRLF)
             FileWrite($hFile, "SingleInstance=0" & @CRLF)
             FileWrite($hFile, "Sandboxie=0" & @CRLF)
             FileWrite($hFile, "SandboxName=" & @CRLF)
             FileWrite($hFile, "Category=" & $catName & @CRLF)
-;~             FileWrite($hFile, "FixAppData=" & @CRLF)
             FileWrite($hFile, "SymLinkCreate=" & @CRLF)
             FileWrite($hFile, "SymLink1=" & @CRLF)
             FileWrite($hFile, "Fave=0" & @CRLF)
-            FileWrite($hFile, "Hide=0" & @CRLF & @CRLF)
+            FileWrite($hFile, "Hide=0" & @CRLF)
+            FileWrite($hFile, "SetEnv1=" & @CRLF & @CRLF)
         EndIf
     Next
     FileClose($hFile)
@@ -241,13 +300,18 @@ Func _ScanFolders_GetApps($categories)
 EndFunc
 
 Func _ScanFolders_LoadCategoriesFromIni()
+    ; Returns a dictionary of categories, each containing a dictionary of apps
     Local $categories = ObjCreate("Scripting.Dictionary")
     Local $appFolder = _ResolvePath("App", @ScriptDir)
     Local $fileList = _FileListToArray($appFolder, "*.ini", 1)
     If IsArray($fileList) Then
         For $i = 1 To $fileList[0]
             Local $file = $fileList[$i]
-            Local $catName = StringTrimRight($file, 4)
+            Local $fileLower = StringLower($file)
+            ; Filter out global config files (case-insensitive)
+            If $fileLower = "settings.ini" Or $fileLower = "ignorelist.ini" Then ContinueLoop
+            ; Only process category INIs
+            Local $catName = StringTrimRight($file, 4) ; Remove ".ini"
             Local $catIni = $appFolder & "\" & $file
             Local $catApps = ObjCreate("Scripting.Dictionary")
             Local $sections = IniReadSectionNames($catIni)
