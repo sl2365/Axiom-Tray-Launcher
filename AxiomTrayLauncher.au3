@@ -12,6 +12,7 @@
 #AutoIt3Wrapper_Res_Description=Axiom Tray Launcher
 #AutoIt3Wrapper_Res_LegalCopyright=sl23
 
+#include <AutoItConstants.au3>
 #include "Config.au3"
 #include "ScanFolders.au3"
 #include "TrayMenu.au3"
