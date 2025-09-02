@@ -8,7 +8,7 @@
 #AutoIt3Wrapper_Res_File_Add=SettingsTemplate.ini, SettingsTemplate.ini, CUSTOM
 #AutoIt3Wrapper_Res_Fileversion_First_Increment=Y
 #AutoIt3Wrapper_Res_FileVersion_AutoIncrement=Y
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.234
+#AutoIt3Wrapper_Res_Fileversion=1.0.0.252
 #AutoIt3Wrapper_Res_ProductVersion=3.3.16.1
 #AutoIt3Wrapper_Res_Description=Axiom Tray Launcher
 #AutoIt3Wrapper_Res_LegalCopyright=sl23
@@ -20,14 +20,12 @@
 #include "Favorites.au3"
 #include "Shortcuts.au3"
 #include "SymLinks.au3"
-#include "EnvVarsListView.au3"
 #include "Updates.au3"
-#include "GuiSettings.au3"
+#include "SettingsGUI.au3"
 #include "Utils.au3"
 
-
 DirRemove(@ScriptDir & "\App\_updater", 1) ; CLEANUP UPDATE FOLDER
-Updates_Check() ; AUTOMATIC UPDATE CHECK ON STARTUP
+Updates_Check() ; AUTO UPDATE CHECK ON START
 
 Opt("TrayMenuMode", 3)
 Global $g_AppDir = @ScriptDir & "\App"
@@ -36,6 +34,10 @@ Global $g_SettingsFile = $g_AppDir & "\Settings.ini"
 ; Ensure App directory exists
 If Not FileExists($g_AppDir) Then
     DirCreate($g_AppDir)
+EndIf
+
+If Not FileExists(@ScriptDir & "\App\IgnoreList.ini") Then
+    FileWrite(@ScriptDir & "\App\IgnoreList.ini", "")
 EndIf
 
 ; Validate and load settings then Load categories and apps from disk, build tray menu
@@ -48,5 +50,27 @@ Global $g_TrayItems = _TrayMenu_Build($g_Categories, $g_Apps, $g_Settings)
 
 ; Main event loop
 While 1
+    ; Handle tray events
     _TrayMenu_HandleEvents($g_Settings, $g_Categories, $g_Apps)
+    ; Handle Settings GUI events (if open)
+    If $hSettingsGUI <> 0 Then
+        Local $guiMsg = GUIGetMsg()
+        Switch $guiMsg
+            Case $GUI_EVENT_CLOSE
+                GUIDelete($hSettingsGUI)
+                $hSettingsGUI = 0
+            Case $g_AboutLinkCtrl
+                ShellExecute("https://github.com/sl2365/Axiom-Tray-Launcher")
+            Case $g_CheckUpdatesCtrl
+                MsgBox(64, "Update Check", "Checking for updates...")
+            Case $g_OpenSettingsFolderCtrl
+                ShellExecute(_ResolvePath("App\", @ScriptDir))
+            ; Add other button handlers here
+        EndSwitch
+    EndIf
+	
+	If $g_EnvVarsLabelTimer > 0 And TimerDiff($g_EnvVarsLabelTimer) > 3000 Then
+		GUICtrlSetState($g_EnvVarsLabelCopied, $GUI_HIDE)
+		$g_EnvVarsLabelTimer = -1
+	EndIf
 WEnd
