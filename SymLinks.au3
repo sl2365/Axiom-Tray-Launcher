@@ -143,7 +143,7 @@ Func _SymLink_CreateGlobalSymlinks($globalIni, $force = False)
         EndIf
         Local $val = $symlinks[$i][1]
         ;ConsoleWrite("[_SymLink_CreateGlobalSymlinks] Processing: " & $key & " = " & $val & @CRLF)
-        Local $split = StringSplit($val, "|", 2)
+        Local $split = StringSplit($val, "~", 2) ; <--- CHANGED FROM "|" TO "~"
         If UBound($split) = 2 Then
             Local $symlink_path = _SymLink_ExpandVarsInPath($split[0], $vars)
             Local $target_path  = _SymLink_ExpandVarsInPath($split[1], $vars)
@@ -178,7 +178,7 @@ Func _SymLink_RemoveGlobalSymlinks($globalIni, $force = False)
         EndIf
         Local $val = $symlinks[$i][1]
         ;ConsoleWrite("[_SymLink_RemoveGlobalSymlinks] Processing: " & $key & " = " & $val & @CRLF)
-        Local $split = StringSplit($val, "|", 2)
+        Local $split = StringSplit($val, "~", 2) ; <--- CHANGED FROM "|" TO "~"
         If UBound($split) = 2 Then
             Local $symlink_path = _SymLink_ExpandVarsInPath($split[0], $vars)
             ;MsgBox(64, "DEBUG", "Global Symlink Remove Spec" & @CRLF & "Key: " & $key & @CRLF & "Symlink Path: " & $symlink_path)
@@ -241,7 +241,7 @@ Func _SymLink_CreateAppSymlinks($catIni, $appName, $globalIni)
             ContinueLoop
         EndIf
         Local $val = $symlinks[$i][1]
-        Local $split = StringSplit($val, "|", 2)
+        Local $split = StringSplit($val, "~", 2) ; <--- CHANGED FROM "|" TO "~"
         If UBound($split) = 2 Then
             Local $target = _SymLink_ExpandVarsInPath($split[0], $vars)
             Local $link = _SymLink_ExpandVarsInPath($split[1], $vars)
@@ -273,7 +273,7 @@ Func _SymLink_RemoveAppSymlinks($catIni, $appName, $globalIni = "")
         Local $symSpec = IniRead($catIni, $appName, $symKey, "")
         If $symSpec = "" Then ContinueLoop
         ;ConsoleWrite("[_SymLink_RemoveAppSymlinks] Processing: " & $symKey & " = " & $symSpec & @CRLF)
-        Local $parts = StringSplit($symSpec, "|", 2)
+        Local $parts = StringSplit($symSpec, "~", 2) ; <--- CHANGED FROM "|" TO "~"
         If UBound($parts) = 2 Then
             Local $symlink_path = _SymLink_ExpandVarsInPath($parts[0], $vars)
             ;MsgBox(64, "DEBUG", "App Symlink Remove Spec" & @CRLF & "Key: " & $symKey & @CRLF & "Symlink Path: " & $symlink_path)
@@ -290,3 +290,53 @@ Func _SymLink_DumpVariables($globalIni)
         ;ConsoleWrite($key & " = " & $vars.Item($key) & @CRLF)
     Next
 EndFunc
+
+; --------- Cleanup On Exit ---------
+Global $settingsIni = @ScriptDir & "\App\Settings.ini"
+Global $categoryIniDir = @ScriptDir & "\App"
+
+; Checks if any app in any category ini has SymLinkCreate=1
+Func _SymLink_ShouldCleanupOnExit()
+    Local $aFiles = _FileListToArray($categoryIniDir, "*.ini", 1)
+    If @error Then Return False
+    For $i = 1 To $aFiles[0]
+        Local $catIni = $categoryIniDir & "\" & $aFiles[$i]
+        Local $appSections = IniReadSectionNames($catIni)
+        If @error Or Not IsArray($appSections) Then ContinueLoop
+        For $j = 1 To $appSections[0]
+            Local $appName = $appSections[$j]
+            If IniRead($catIni, $appName, "SymLinkCreate", "0") == "1" Then
+                Return True ; Found at least one app needing cleanup
+            EndIf
+        Next
+    Next
+    Return False
+EndFunc
+
+; Removes all per-app symlinks for all apps with SymLinkCreate=1 in all categories
+Func _SymLink_CleanupAllPerAppSymlinks()
+    Local $aFiles = _FileListToArray($categoryIniDir, "*.ini", 1)
+    If @error Then Return
+    For $i = 1 To $aFiles[0]
+        Local $catIni = $categoryIniDir & "\" & $aFiles[$i]
+        Local $appSections = IniReadSectionNames($catIni)
+        If @error Or Not IsArray($appSections) Then ContinueLoop
+        For $j = 1 To $appSections[0]
+            Local $appName = $appSections[$j]
+            If IniRead($catIni, $appName, "SymLinkCreate", "0") == "1" Then
+                _SymLink_RemoveAppSymlinks($catIni, $appName, $settingsIni)
+            EndIf
+        Next
+    Next
+EndFunc
+
+; Call this on tray exit!
+Func _SymLink_TrayExitCleanup()
+    If _SymLink_ShouldCleanupOnExit() Then
+        MsgBox(64, "Symlink Cleanup", "Cleaning up per-app symlinks before exit...")
+        _SymLink_CleanupAllPerAppSymlinks()
+    EndIf
+    ; Otherwise, just exit silently
+EndFunc
+
+; To use: call OnAutoItExitRegister("_SymLink_TrayExitCleanup") in your tray script
