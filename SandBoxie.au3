@@ -1,6 +1,10 @@
-; SandBoxie.au3
+; SandBoxie.au3:
 
 #include-once
+#include "TrayMenu.au3"
+
+Local $sandboxieRaw = IniRead($settingsIni, "GLOBAL", "SandboxiePath", "")
+Local $sandboxiePath = _ResolvePath($sandboxieRaw, @ScriptDir)
 
 Func _RunWithSandboxie($exe, $args, $workDir, $sandboxName, $settingsIni)
     Local $sandboxieRaw = IniRead($settingsIni, "GLOBAL", "SandboxiePath", "")
