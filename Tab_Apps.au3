@@ -10,7 +10,7 @@ Global $g_SaveBtn, $g_DeleteBtn
 Global $g_AppTreeItemToSection = ObjCreate("Scripting.Dictionary") ; maps treeview item ID to section name
 Global $g_AppTreeItemToIni = ObjCreate("Scripting.Dictionary")     ; maps treeview item ID to ini file
 Global $g_AppLastSelectedItem = 0
-
+Global $guiW, $guiH, $listviewX, $listviewY, $btnW, $btnH, $footer_gap
 Global $g_ViewSwitch, $g_TreeViewMode = "tray" ; "tray" or "folder"
 
 Func Tab_Apps_Create($hGUI, $hTab)
