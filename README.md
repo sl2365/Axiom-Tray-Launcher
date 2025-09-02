@@ -97,4 +97,4 @@ Axiom Tray Launcher is a powerful and flexible Windows utility that allows you t
 
 ## License
 
-Axiom Tray Launcher is released under the MIT License.
+Axiom Tray Launcher is released under the GPL-3.0 License.
