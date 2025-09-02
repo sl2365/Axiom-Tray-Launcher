@@ -1,7 +1,7 @@
 # Axiom-Tray-Launcher
 Tray app for launching apps.
 
-Here are some features:
+## Here are some features:
 - Full relative path support throughout the app.
 - Supports launching apps via Sandboxie-Plus, just add the path to SandMan.exe and enable Sandboxie in the settings.
 - Folder scanning for instant listing of all apps within a folder, includes recursive scanning. You can also set a folder to scan for certain file types, default is EXE.
@@ -15,4 +15,4 @@ Here are some features:
 - Per app symlinks are always created/removed on starting/exiting the app. So you can choose to use symlinks here or make them global and persistent.
 - Auto-updates when new versions available. Default is OFF, so needs enabling in the Settings file. Checks once daily. You can also leave this off and use the Manual update check via the About tab in the Settings.
 
-Instructions for setup:
+## Instructions for setup:
