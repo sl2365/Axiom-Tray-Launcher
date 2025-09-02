@@ -7,6 +7,7 @@
 
 Global $g_SettingsIni = @ScriptDir & "\App\Settings.ini"
 Global $g_SandboxiePathEdit, $g_SandboxiePathBrowseBtn
+Global $guiW, $guiH, $listviewX, $listviewY, $btnW, $btnH, $footer_gap
 
 ;----------------- Variables Section Globals -----------------
 Global $g_VarsListView, $g_VarsEdit, $g_VarsAddBtn, $g_VarsDeleteBtn, $g_VarsSaveBtn
