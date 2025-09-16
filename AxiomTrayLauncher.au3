@@ -5,9 +5,8 @@
 ; Compiled with AutoIt v3.3.16.1
 ;*****************************************
 #AutoIt3Wrapper_icon=AxiomTrayIcon.ico
-#AutoIt3Wrapper_Res_Fileversion_First_Increment=Y
 #AutoIt3Wrapper_Res_FileVersion_AutoIncrement=Y
-#AutoIt3Wrapper_Res_Fileversion=1.0.0.253
+#AutoIt3Wrapper_Res_Fileversion=0.0.3.286
 #AutoIt3Wrapper_Res_ProductVersion=3.3.16.1
 #AutoIt3Wrapper_Res_Description=Axiom Tray Launcher
 #AutoIt3Wrapper_Res_LegalCopyright=sl23
@@ -45,6 +44,9 @@ Global $g_Settings = _Config_LoadAndValidate($g_SettingsFile)
 Global $g_Categories = _ScanFolders_LoadCategoriesFromIni()
 Global $g_Apps = _ScanFolders_GetAppsWithButtonText($g_Categories)
 Global $g_TrayItems = _TrayMenu_Build($g_Categories, $g_Apps, $g_Settings)
+Global $g_MonitoredApps[0][4] ; Format: [PID, IsSandboxie, CatIni, AppName]
+Global $g_MonitorWasSandboxActive = False
+AdlibRegister("MonitorApps", 500)
 
 ;~ MsgBox(0, "File Version", _Updates_GetFileVersion()) ; debug to show file version.
 
@@ -74,3 +76,71 @@ While 1
 		$g_EnvVarsLabelTimer = -1
 	EndIf
 WEnd
+
+Func MonitorApps()
+    ;ConsoleWrite("MonitorApps: Function called!" & @CRLF)
+    Local $sandboxCount = 0
+    Local $length = UBound($g_MonitoredApps)
+    If $length = 0 Then Return
+
+    ;ConsoleWrite("==== MONITOR DEBUG ARRAY STRUCTURE DUMP ====" & @CRLF)
+    For $i = 0 To $length - 1
+        ;ConsoleWrite("Slot " & $i & ": PID=" & $g_MonitoredApps[$i][0] & ", IsSandboxie=" & $g_MonitoredApps[$i][1] & ", CatIni=" & $g_MonitoredApps[$i][2] & ", AppName=" & $g_MonitoredApps[$i][3] & @CRLF)
+    Next
+    ;ConsoleWrite("==== END DUMP ====" & @CRLF)
+
+    For $i = 0 To $length - 1
+        Local $pid = $g_MonitoredApps[$i][0]
+        Local $isSandboxie = $g_MonitoredApps[$i][1]
+        Local $catIni = $g_MonitoredApps[$i][2]
+        Local $appName = $g_MonitoredApps[$i][3]
+
+        If $pid = 0 Or $pid = "" Then
+            ;ConsoleWrite("MonitorApps: Slot " & $i & " PID is 0 or blank (already cleared), skipping." & @CRLF)
+            ContinueLoop
+        EndIf
+
+        If ProcessExists($pid) Then
+            ;ConsoleWrite("MonitorApps: App in slot " & $i & " is still running. IsSandboxie=" & $isSandboxie & @CRLF)
+            If $isSandboxie = 1 Then $sandboxCount += 1
+            ContinueLoop
+        Else
+            ;ConsoleWrite("MonitorApps: App in slot " & $i & " has exited. IsSandboxie=" & $isSandboxie & @CRLF)
+        EndIf
+
+        ; Handle cleanup for exited app
+;~         If $isSandboxie <> 1 Then
+;~             ;ConsoleWrite("MonitorApps: Removing symlinks for slot " & $i & " (non-sandboxed)." & @CRLF)
+;~             _SymLink_RemoveAppSymlinks($catIni, $appName, $g_SettingsFile)
+;~         Else
+;~             ;ConsoleWrite("MonitorApps: Skipping symlink removal for slot " & $i & " (sandboxed)." & @CRLF)
+;~         EndIf
+
+        $g_MonitoredApps[$i][0] = 0 ; Mark slot as cleared (PID=0)
+        ;ConsoleWrite("MonitorApps: Marked slot " & $i & " as cleared (PID=0)." & @CRLF)
+    Next
+
+    ; --- Sandboxie cleanup logic ---
+    ;ConsoleWrite("MonitorApps: SandboxCount=" & $sandboxCount & ", WasActive=" & $g_MonitorWasSandboxActive & @CRLF)
+    ;ConsoleWrite("MonitorApps: Checking for SbieSvc.exe and SandMan.exe before shutdown." & @CRLF)
+    If ProcessExists("SbieSvc.exe") Then
+        ;ConsoleWrite("MonitorApps: SbieSvc.exe IS RUNNING." & @CRLF)
+    EndIf
+    If ProcessExists("SandMan.exe") Then
+        ;ConsoleWrite("MonitorApps: SandMan.exe IS RUNNING." & @CRLF)
+    EndIf
+
+    If $sandboxCount > 0 Then
+        ;ConsoleWrite("MonitorApps: Sandboxie still active, keeping service alive." & @CRLF)
+        $g_MonitorWasSandboxActive = True
+    ElseIf $sandboxCount = 0 And $g_MonitorWasSandboxActive Then
+        ;ConsoleWrite("MonitorApps: No sandboxed apps left, shutting down Sandboxie service." & @CRLF)
+        If ProcessExists("SandMan.exe") Then
+            ;ConsoleWrite("MonitorApps: SandMan.exe detected, closing." & @CRLF)
+            ProcessClose("SandMan.exe")
+        EndIf
+        _StopSandboxieService()
+        $g_MonitorWasSandboxActive = False
+    EndIf
+    ;ConsoleWrite("MonitorApps: Sandboxie new state: " & $g_MonitorWasSandboxActive & @CRLF)
+EndFunc
