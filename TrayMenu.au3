@@ -3,62 +3,47 @@
 ; Now supports absolute and relative paths directly, no Utils.au3 needed for path logic.
 
 #include-once
+#include <Array.au3>
 #include "Sandboxie.au3"
 #include "Favorites.au3"
 #include "ScanFolders.au3"
 #include "SymLinks.au3"
-#include "Updates.au3"
  
 Global $hSettingsGUI, $g_OKBtn
-Global $g_TrayMenuTitle, $g_TrayReload, $g_TraySettings, $g_TrayGenLinks, $g_TraySeparator1, $g_TraySeparator2, $g_TraySeparator3, $g_TrayExit
+Global $g_TrayMenuTitle, $g_TrayReload, $g_TraySettings, $g_TraySeparator1, $g_TraySeparator2, $g_TraySeparator3, $g_TrayExit
 Global $g_CategoryMenus = ObjCreate("Scripting.Dictionary")
 Global $g_TrayItemMap = ObjCreate("Scripting.Dictionary")
 Global $g_TrayScan
 Global $g_TrayCreateGlobalLinks, $g_TrayRemoveGlobalLinks
-Global $g_TrayCheckUpdates ; <-- ADDED: Menu item for update check
-
+Global $g_MonitoredApps
 Local $globalIni = _ResolvePath("App\Settings.ini", @ScriptDir)
 
 ; --- Path Handling Functions (embedded here) ---
-;~ Func _PathIsAbsolute($path)
-;~     ; Returns True if path is absolute (starts with drive letter or UNC)
-;~     Return StringRegExp($path, "^[A-Za-z]:\\|^\\\\")
-;~ EndFunc
-
 Func _ResolvePath($path, $baseDir)
-    ; Trim whitespace
     $path = StringStripWS($path, 3)
     $baseDir = StringStripWS($baseDir, 3)
     $path = StringReplace($path, "/", "\")
     $baseDir = StringReplace($baseDir, "/", "\")
 
-    ; If empty, return baseDir
     If $path = "" Then Return $baseDir
 
-    ; Handle special "?" drive
-    If StringLeft($path, 3) = "?:\" Then
-        Local $driveLetter = StringLeft(@ScriptDir, 2) ; e.g. "F:"
-        $path = $driveLetter & StringTrimLeft($path, 2)
-        ; Now $path is "F:\rest..."
-    EndIf
+    If StringLeft($path, 2) = "?:" Then
+		Local $driveLetter = StringLeft(@ScriptDir, 2)
+		$path = $driveLetter & StringMid($path, 3)
+	EndIf
 
-    ; UNC and absolute drive paths
     If StringRegExp($path, '^(\\\\|[A-Za-z]:\\)') Then
         Return $path
     EndIf
 
-    ; Remove leading backslash from relative path, if present
     If StringLeft($path, 1) = "\" Then $path = StringTrimLeft($path, 1)
 
-    ; Combine base and path
     Local $fullPath = $baseDir & "\" & $path
 
-    ; Normalize "..\" and ".\" using AutoIt's _PathFull (requires #include <File.au3>)
     If FileExists($fullPath) Then
         $fullPath = _PathFull($fullPath)
     EndIf
 
-    ; Remove duplicate backslashes (except for UNC root)
     $fullPath = StringRegExpReplace($fullPath, '(?<!^)\\{2,}', '\')
 
     Return $fullPath
@@ -88,7 +73,6 @@ Func _GetFolderName($path)
     EndIf
 EndFunc
 
-; --- Helper: Resolve cross-INI variable value ---
 Func _TrayMenu_ResolveEnv($envValue)
     If StringInStr($envValue, "|") Then
         Local $parts = StringSplit($envValue, "|")
@@ -118,27 +102,20 @@ Func _TrayMenu_ResolveEnv($envValue)
     EndIf
 EndFunc
 
-; Create global symlinks on startup ---
 _SymLink_CreateGlobalSymlinks($globalIni)
 
 Func _TrayMenu_Build(ByRef $categories, ByRef $apps, ByRef $settings)
     TrayItemDelete(0)
     $g_TrayItemMap.RemoveAll()
     $g_CategoryMenus.RemoveAll()
-    ; 1. Utility submenu
-    $g_TrayMenuTitle = TrayCreateMenu("Axiom Menu")
+    $g_TrayMenuTitle = TrayCreateMenu("♾️ Axiom Menu")
     $g_TrayReload    = TrayCreateItem("🔄 Reload Menu", $g_TrayMenuTitle)
     $g_TraySettings  = TrayCreateItem("⚙️ Settings", $g_TrayMenuTitle)
-    $g_TrayGenLinks  = TrayCreateItem("🔗 Generate Links", $g_TrayMenuTitle)
-;~     $g_TrayScan      = TrayCreateItem("🧐 Scan", $g_TrayMenuTitle)
-    ; --- Add buttons for global symlink management ---
     $g_TrayCreateGlobalLinks = TrayCreateItem("➕ Create Global Symlinks", $g_TrayMenuTitle)
     $g_TrayRemoveGlobalLinks = TrayCreateItem("➖ Remove Global Symlinks", $g_TrayMenuTitle)
-    ; --- Add Check for Updates button ---
-    $g_TrayCheckUpdates = TrayCreateItem("🔍 Check for Updates", $g_TrayMenuTitle) ; ADDED
 
-    ; --- Determine what to show ---
     Local $hasCategories = False
+    Local $sortedCategories[0]
     For $catName In $categories
         If $catName = "Fave" Then ContinueLoop
         If $catName = "Other" Then
@@ -148,10 +125,11 @@ Func _TrayMenu_Build(ByRef $categories, ByRef $apps, ByRef $settings)
             Local $arr = $apps.Item($catName)
             If IsArray($arr) And UBound($arr) > 0 Then
                 $hasCategories = True
-                ExitLoop
+                _ArrayAdd($sortedCategories, $catName)
             EndIf
         EndIf
     Next
+    If UBound($sortedCategories) > 0 Then _ArraySort($sortedCategories)
     Local $hasFaves = False
     If $apps.Exists("Fave") Then
         Local $faveArr = $apps.Item("Fave")
@@ -159,12 +137,12 @@ Func _TrayMenu_Build(ByRef $categories, ByRef $apps, ByRef $settings)
             $hasFaves = True
         EndIf
     EndIf
-    ; --- Separator1: only if categories ---
     If $hasCategories Then
         $g_TraySeparator1 = TrayCreateItem("")
     EndIf
-    ; 2. Category submenus (skip Fave and empty Other)
-    For $catName In $categories
+
+    For $i = 0 To UBound($sortedCategories) - 1
+        Local $catName = $sortedCategories[$i]
         If $catName = "Fave" Then ContinueLoop
         If $catName = "Other" Then
             If Not $apps.Exists("Other") Or UBound($apps.Item("Other")) = 0 Then ContinueLoop
@@ -174,24 +152,35 @@ Func _TrayMenu_Build(ByRef $categories, ByRef $apps, ByRef $settings)
             If IsArray($arr) And UBound($arr) > 0 Then
                 Local $catMenu = TrayCreateMenu("📁 " & $catName)
                 $g_CategoryMenus.Item($catName) = $catMenu
-                For $i = 0 To UBound($arr) - 1
-                    Local $appName = $arr[$i][0]
-                    Local $buttonText = $arr[$i][1]
+                Local $sortedArr[UBound($arr)][2]
+                For $j = 0 To UBound($arr) - 1
+                    $sortedArr[$j][0] = $arr[$j][0]
+                    $sortedArr[$j][1] = $arr[$j][1]
+                Next
+                _ArraySort($sortedArr, 0, 0, 0, 1)
+                For $j = 0 To UBound($sortedArr) - 1
+                    Local $appName = $sortedArr[$j][0]
+                    Local $buttonText = $sortedArr[$j][1]
                     Local $appItem = TrayCreateItem($buttonText, $catMenu)
                     $g_TrayItemMap.Item($appName) = $appItem
                 Next
             EndIf
         EndIf
     Next
-    ; --- Separator2 logic ---
+
     If $hasFaves Then
         $g_TraySeparator2 = TrayCreateItem("")
     EndIf
-    ; 3. Fave flat list
+
     If $hasFaves Then
         Local $faveArr = $apps.Item("Fave")
+        Local $sortedFaves[UBound($faveArr)]
         For $i = 0 To UBound($faveArr) - 1
-            Local $appName = $faveArr[$i]
+            $sortedFaves[$i] = $faveArr[$i]
+        Next
+        _ArraySort($sortedFaves)
+        For $i = 0 To UBound($sortedFaves) - 1
+            Local $appName = $sortedFaves[$i]
             Local $catName = _GetAppCategory($appName, $categories)
             Local $catIni = _ResolvePath("App\" & $catName & ".ini", @ScriptDir)
             Local $buttonText = IniRead($catIni, $appName, "ButtonText", $appName)
@@ -199,7 +188,6 @@ Func _TrayMenu_Build(ByRef $categories, ByRef $apps, ByRef $settings)
             $g_TrayItemMap.Item($appName) = $faveItem
         Next
     EndIf
-    ; --- Separator3: ALWAYS before Exit ---
     $g_TraySeparator3 = TrayCreateItem("")
     $g_TrayExit = TrayCreateItem("❌ Exit")
 EndFunc
@@ -224,7 +212,6 @@ Func TrayUI_Destroy()
     If IsDeclared("g_TrayMenuTitle") And $g_TrayMenuTitle Then TrayItemDelete($g_TrayMenuTitle)
     If IsDeclared("g_TrayReload") And $g_TrayReload Then TrayItemDelete($g_TrayReload)
     If IsDeclared("g_TraySettings") And $g_TraySettings Then TrayItemDelete($g_TraySettings)
-    If IsDeclared("g_TrayGenLinks") And $g_TrayGenLinks Then TrayItemDelete($g_TrayGenLinks)
     If IsDeclared("g_TrayScan") And $g_TrayScan Then TrayItemDelete($g_TrayScan)
     If IsDeclared("g_TrayCreateGlobalLinks") And $g_TrayCreateGlobalLinks Then TrayItemDelete($g_TrayCreateGlobalLinks)
     If IsDeclared("g_TrayRemoveGlobalLinks") And $g_TrayRemoveGlobalLinks Then TrayItemDelete($g_TrayRemoveGlobalLinks)
@@ -232,14 +219,12 @@ Func TrayUI_Destroy()
     If IsDeclared("g_TraySeparator2") And $g_TraySeparator2 Then TrayItemDelete($g_TraySeparator2)
     If IsDeclared("g_TraySeparator3") And $g_TraySeparator3 Then TrayItemDelete($g_TraySeparator3)
     If IsDeclared("g_TrayExit") And $g_TrayExit Then TrayItemDelete($g_TrayExit)
-    If IsDeclared("g_TrayCheckUpdates") And $g_TrayCheckUpdates Then TrayItemDelete($g_TrayCheckUpdates) ; ADDED
 
     $g_TrayItemMap.RemoveAll()
     $g_CategoryMenus.RemoveAll()
 EndFunc
 
 Func _TrayMenu_AppLauncher($appName, $catIni)
-    ; --- Read all app variables ---
     Local $keys = IniReadSection($catIni, $appName)
     Local $vars = ObjCreate("Scripting.Dictionary")
     If IsArray($keys) Then
@@ -253,7 +238,6 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
         Next
     EndIf
 
-    ; --- Get Arguments and substitute variables ---
     Local $argsRaw = ""
     If $vars.Exists("Arguments") Then $argsRaw = $vars.Item("Arguments")
     Local $args = $argsRaw
@@ -267,7 +251,6 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
         Next
     EndIf
 
-    ; --- Get executable (prefer SetEnv1, fallback to RunFile) ---
     Local $exe = ""
     If $vars.Exists("SetEnv1") And $vars.Item("SetEnv1") <> "" Then
         $exe = $vars.Item("SetEnv1")
@@ -276,7 +259,6 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
     EndIf
     $exe = _ResolvePath($exe, @ScriptDir)
 
-    ; --- Determine workDir ---
     Local $workDir = ""
     If $vars.Exists("WorkDir") And $vars.Item("WorkDir") <> "" Then
         $workDir = _ResolvePath($vars.Item("WorkDir"), @ScriptDir)
@@ -289,7 +271,6 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
         EndIf
     EndIf
 
-    ; --- Check exe is not a folder and is a valid executable ---
     Local $ext = StringLower(StringRight($exe, 4))
     If $exe = "" _
         Or Not FileExists($exe) _
@@ -299,8 +280,11 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
         Return
     EndIf
 
-    ; --- SingleInstance logic (per app via INI) ---
-    Local $exeName = StringRegExpReplace($exe, "^.*\\", "")
+    Local $exeName = $exe
+    If StringInStr($exeName, '\') Then $exeName = StringRegExpReplace($exeName, '^.*\\', '')
+    If StringInStr($exeName, ' ') Then $exeName = StringLeft($exeName, StringInStr($exeName, ' ') - 1)
+    $exeName = StringReplace($exeName, '"', '')
+
     Local $singleInstance = 0
     If $vars.Exists("SingleInstance") Then
         $singleInstance = Number($vars.Item("SingleInstance"))
@@ -315,22 +299,18 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
         EndIf
     EndIf
 
-    ; --- Create per-app/category symlinks BEFORE launch ---
     _SymLink_CreateAppSymlinks($catIni, $appName, $globalIni)
 
-    ; --- RunAsAdmin logic (per app via INI) ---
     Local $runAsAdmin = "0"
     If $vars.Exists("RunAsAdmin") Then
         $runAsAdmin = $vars.Item("RunAsAdmin")
     EndIf
 
-    ; --- Sandboxie logic (per app via INI) ---
     Local $sandboxie = "0", $sandboxName = ""
     If $vars.Exists("Sandboxie") Then $sandboxie = $vars.Item("Sandboxie")
     If $vars.Exists("SandboxName") Then $sandboxName = $vars.Item("SandboxName")
     Local $settingsIni = @ScriptDir & "\App\Settings.ini"
 
-    ; --- Strip off executable path if present at start of Arguments ---
     If StringLeft($args, StringLen($exe)) = $exe Then
         $args = StringTrimLeft($args, StringLen($exe))
         $args = StringStripWS($args, 1)
@@ -342,28 +322,33 @@ Func _TrayMenu_AppLauncher($appName, $catIni)
         EndIf
     EndIf
 
-    ; --- Launch ---
-    Local $appExited = False
-    If $sandboxie = "1" And $sandboxName <> "" Then
-        Local $pid = _RunWithSandboxie($exe, $args, $workDir, $sandboxName, $settingsIni)
-        If $pid <> 0 Then
-            ProcessWaitClose($pid)
-            $appExited = True
-        EndIf
-    ElseIf $runAsAdmin = "1" Then
-        ShellExecute($exe, $args, $workDir, "runas")
-        ; Can't reliably detect process exit for ShellExecute/runas
-        $appExited = False
-    Else
-        Local $pid = Run('"' & $exe & '" ' & $args, $workDir)
-        ; Do NOT block with ProcessWaitClose, tray must stay responsive!
-        ; $appExited = False   ; If you need to do cleanup, handle it elsewhere (e.g., tray exit or background watcher)
-    EndIf
+	Local $appExited = False
+	If $sandboxie = "1" And $sandboxName <> "" Then
+		Local $pidArr = _RunWithSandboxie($exe, $args, $workDir, $sandboxName, $settingsIni)
+		Local $sandboxedPid = $pidArr[1]
+		If $sandboxedPid <> 0 And $sandboxedPid <> "" Then
+			Local $newLen = UBound($g_MonitoredApps) + 1
+			ReDim $g_MonitoredApps[$newLen][4]
+			$g_MonitoredApps[$newLen - 1][0] = $sandboxedPid
+			$g_MonitoredApps[$newLen - 1][1] = 1 ; Sandboxie
+			$g_MonitoredApps[$newLen - 1][2] = $catIni
+			$g_MonitoredApps[$newLen - 1][3] = $appName
+		EndIf
+	ElseIf $runAsAdmin = "1" Then
+		ShellExecute($exe, $args, $workDir, "runas")
+	Else
+		Local $pid = Run('"' & $exe & '" ' & $args, $workDir)
+		If $pid <> 0 And $pid <> "" Then
+			Local $newLen = UBound($g_MonitoredApps) + 1
+			ReDim $g_MonitoredApps[$newLen][4]
+			$g_MonitoredApps[$newLen - 1][0] = $pid
+			$g_MonitoredApps[$newLen - 1][1] = 0 ; Not sandboxie
+			$g_MonitoredApps[$newLen - 1][2] = $catIni
+			$g_MonitoredApps[$newLen - 1][3] = $appName
+		EndIf
+	EndIf
 
-    ; --- Remove per-app/category symlinks after app closes ---
-    If $appExited Then
-        _SymLink_RemoveAppSymlinks($catIni, $appName, $globalIni)
-    EndIf
+    ; DO NOT remove symlinks here; monitoring/cleanup is handled in main file via AdlibRegister("MonitorApps", 500)
 EndFunc
 
 Func _TrayMenu_HandleEvents(ByRef $settings, ByRef $categories, ByRef $apps)
@@ -371,8 +356,6 @@ Func _TrayMenu_HandleEvents(ByRef $settings, ByRef $categories, ByRef $apps)
     Switch $msg
         Case $g_TrayReload
             _TrayMenu_RefreshFull()
-        Case $g_TrayGenLinks
-            _Shortcuts_GenerateLinks($categories, $apps, $settings)
         Case $g_TraySettings
             ShowSettingsGUI()
 			While $hSettingsGUI <> 0
@@ -381,13 +364,9 @@ Func _TrayMenu_HandleEvents(ByRef $settings, ByRef $categories, ByRef $apps)
         Case $g_TrayCreateGlobalLinks
             Local $globalIni = _ResolvePath("App\Settings.ini", @ScriptDir)
             _SymLink_ManualCreateGlobalSymlinks($globalIni)
-            MsgBox(64, "Global Symlinks", "Global symlinks created.")
         Case $g_TrayRemoveGlobalLinks
             Local $globalIni = _ResolvePath("App\Settings.ini", @ScriptDir)
             _SymLink_ManualRemoveGlobalSymlinks($globalIni)
-            MsgBox(64, "Global Symlinks", "Global symlinks removed.")
-        Case $g_TrayCheckUpdates
-            Updates_Check(True)
         Case $g_TrayExit
 			_SymLink_TrayExitCleanup()
             _SymLink_RemoveGlobalSymlinks($globalIni)
