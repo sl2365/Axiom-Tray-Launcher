@@ -21,26 +21,80 @@ Func _ScanFolders_LoadIgnoreList()
     Return $dict
 EndFunc
 
-Func _ScanFolders_IsIgnored($fullPath)
-    Local $resolvedFullPath = _ResolvePath($fullPath, @ScriptDir)
-    Local $pathLower = StringLower($resolvedFullPath)
-    Local $fileName = _GetFileName($fullPath)
-    Local $fileLower = StringLower($fileName)
-    Local $parentFolder = _GetParentFolder($fullPath)
-    Local $parentPlusFile = ""
-    If $parentFolder <> "" Then
-        $parentPlusFile = StringLower($parentFolder & "\" & $fileName)
-    EndIf
-    ; Also check resolved parent+file
-    Local $resolvedParentPlusFile = ""
-    If $parentFolder <> "" Then
-        $resolvedParentPlusFile = StringLower(_ResolvePath($parentFolder & "\" & $fileName, @ScriptDir))
-    EndIf
-    ; Check against all forms in ignore list
-    If $g_IgnoreList.Exists($pathLower) Then Return True
-    If $parentPlusFile <> "" And $g_IgnoreList.Exists($parentPlusFile) Then Return True
-    If $resolvedParentPlusFile <> "" And $g_IgnoreList.Exists($resolvedParentPlusFile) Then Return True
-    If $g_IgnoreList.Exists($fileLower) Then Return True
+Func _ScanFolders_IsIgnored($fullPath, $isFolder = False)
+    ; Normalize to lowercase, portable path
+    Local $resolvedFullPath = StringLower(_ResolvePath($fullPath, @ScriptDir))
+    Local $portableFullPath = StringLower(_MakePortablePath($fullPath, @ScriptDir))
+    Local $fileName = StringLower(_GetFileName($fullPath))
+    Local $parentFolder = StringLower(_GetParentFolder($fullPath))
+    Local $parentPlusFile = $parentFolder & "\" & $fileName
+
+;~     ConsoleWrite("==========================================" & @CRLF)
+;~     ConsoleWrite("CHECK IGNORE for: " & $fullPath & @CRLF)
+;~     ConsoleWrite("   resolvedFullPath: " & $resolvedFullPath & @CRLF)
+;~     ConsoleWrite("   portableFullPath: " & $portableFullPath & @CRLF)
+;~     ConsoleWrite("   fileName: " & $fileName & @CRLF)
+;~     ConsoleWrite("   parentFolder: " & $parentFolder & @CRLF)
+;~     ConsoleWrite("   parentPlusFile: " & $parentPlusFile & @CRLF)
+;~     ConsoleWrite("   isFolder: " & $isFolder & @CRLF)
+;~     ConsoleWrite("---- IgnoreList entries ----" & @CRLF)
+    Local $ignoreArr = $g_IgnoreList.Keys
+    For $i = 0 To UBound($ignoreArr) - 1
+        Local $ignoreEntry = $ignoreArr[$i]
+;~         ConsoleWrite("  Ignore entry[" & $i & "]: " & $ignoreEntry & @CRLF)
+
+        ; Absolute path match (file or folder)
+        If $resolvedFullPath = $ignoreEntry Then
+;~             ConsoleWrite("  >>> IGNORED: Absolute path match!" & @CRLF)
+            Return True
+        EndIf
+        ; Portable path match
+        If $portableFullPath = $ignoreEntry Then
+;~             ConsoleWrite("  >>> IGNORED: Portable path match!" & @CRLF)
+            Return True
+        EndIf
+        ; Filename only match (file or folder)
+        If $fileName = $ignoreEntry Then
+;~             ConsoleWrite("  >>> IGNORED: Filename match!" & @CRLF)
+            Return True
+        EndIf
+        ; Parent+filename match (file or folder)
+        If $parentPlusFile = $ignoreEntry Then
+;~             ConsoleWrite("  >>> IGNORED: Parent+filename match!" & @CRLF)
+            Return True
+        EndIf
+        ; Partial path match (file or folder)
+        If StringInStr($resolvedFullPath, $ignoreEntry) Then
+;~             ConsoleWrite("  >>> IGNORED: Partial path match!" & @CRLF)
+            Return True
+        EndIf
+        ; Relative path match (file or folder)
+        If StringLeft($ignoreEntry, 2) = ".." Or StringLeft($ignoreEntry, 1) = "." Then
+            If StringLower(_ResolvePath($ignoreEntry, @ScriptDir)) = $resolvedFullPath Then
+;~                 ConsoleWrite("  >>> IGNORED: Relative path match!" & @CRLF)
+                Return True
+            EndIf
+        EndIf
+        ; Folder only: allow folder name or parent+folder matches
+        If $isFolder Then
+            ; If ignore entry is just a folder name
+            If $fileName = $ignoreEntry Then
+;~                 ConsoleWrite("  >>> IGNORED: Folder name match!" & @CRLF)
+                Return True
+            EndIf
+            ; If ignore entry is a parent+folder name, e.g. PortableApps\Trash
+            If $parentPlusFile = $ignoreEntry Then
+;~                 ConsoleWrite("  >>> IGNORED: Parent+folder match!" & @CRLF)
+                Return True
+            EndIf
+            ; Partial path match for folder
+            If StringInStr($resolvedFullPath, $ignoreEntry) Then
+;~                 ConsoleWrite("  >>> IGNORED: Partial folder path match!" & @CRLF)
+                Return True
+            EndIf
+        EndIf
+    Next
+;~     ConsoleWrite("  ---> NOT IGNORED" & @CRLF)
     Return False
 EndFunc
 
@@ -158,8 +212,7 @@ Func _ScanFolders_AndShowResults($settings)
             EndIf
             If FileExists($scanPath) Then
                 Local $numNewApps = _ScanFolders_ScanSingle($scanPath, $depth, $filters, $catName)
-                $results &= "Path " & $pathIndex & " - " & $scanPath & @CRLF
-                $results &= "           - " & $numNewApps & " new apps found." & @CRLF & @CRLF
+                $results &= $pathIndex & " - " & _ShortenPath($scanPath) & ":  " & $numNewApps & @CRLF
                 $pathIndex += 1
             Else
                 $catNames.Item("notfound_" & $notFoundIndex) = $scanPath
@@ -181,6 +234,14 @@ Func _ScanFolders_AndShowResults($settings)
     MsgBox(64, "Scan Complete", $msg)
 EndFunc
 
+Func _ShortenPath($path)
+    Local $parts = StringSplit($path, "\")
+    If Not IsArray($parts) Or $parts[0] < 2 Then Return $path
+    If $parts[0] <= 2 Then Return $path
+    ; Shows first folder, ..., and last folder (e.g., D:\...\PortableApps)
+    Return $parts[1] & "\" & "..." & "\" & $parts[$parts[0]]
+EndFunc
+
 Func _ScanFolders_DiscoverApps($scanPath, $depth, $filters)
     Local $apps = ObjCreate("Scripting.Dictionary")
     _ScanFolders_ScanFolderNative($scanPath, $apps, $depth, 0, $filters)
@@ -199,18 +260,25 @@ Func _ScanFolders_ScanFolderNative($folder, ByRef $apps, $maxDepth, $curDepth, $
         Local $fullPath = $folder & "\" & $file
         Local $attrib = FileGetAttrib($fullPath)
         ; ----------- Flexible ignore check -------------
-        If _ScanFolders_IsIgnored($fullPath) Then
-            ; ConsoleWrite("IGNORED: " & $fullPath & @CRLF)
-            ContinueLoop
-        EndIf
-        ; ----------- End ignore check ------------------
-        If StringInStr($attrib, "D") Then
+        If StringInStr($attrib, "D") Then ; Directory
+            ; Ignore folders if they match any ignore rule
+            If _ScanFolders_IsIgnored($fullPath, True) Then
+                ; ConsoleWrite("IGNORED FOLDER: " & $fullPath & @CRLF)
+                ContinueLoop
+            EndIf
+            ; Only scan subfolders if not hidden/system, depth limit, not . or ..
             If $file <> "." And $file <> ".." And $curDepth < $maxDepth _
                 And Not StringInStr($attrib, "H") _
                 And Not StringInStr($attrib, "S") Then
                 _ScanFolders_ScanFolderNative($fullPath, $apps, $maxDepth, $curDepth + 1, $filters)
             EndIf
-        Else
+        Else ; File
+            ; Ignore files if they match any ignore rule
+            If _ScanFolders_IsIgnored($fullPath, False) Then
+                ; ConsoleWrite("IGNORED FILE: " & $fullPath & @CRLF)
+                ContinueLoop
+            EndIf
+            ; Only process non-hidden/non-system files
             If Not StringInStr($attrib, "H") And Not StringInStr($attrib, "S") Then
                 If StringInStr($file, ".") Then
                     Local $ext = StringLower(StringTrimLeft($file, StringInStr($file, ".", 0, -1)))
@@ -259,11 +327,11 @@ Func _ScanFolders_WriteOrUpdateCategoryIni($catIni, $apps, $catName)
             FileWrite($hFile, "Sandboxie=0" & @CRLF)
             FileWrite($hFile, "SandboxName=" & @CRLF)
             FileWrite($hFile, "Category=" & $catName & @CRLF)
-            FileWrite($hFile, "SymLinkCreate=" & @CRLF)
-            FileWrite($hFile, "SymLink1=" & @CRLF)
             FileWrite($hFile, "Fave=0" & @CRLF)
             FileWrite($hFile, "Hide=0" & @CRLF)
-            FileWrite($hFile, "SetEnv1=" & @CRLF & @CRLF)
+            FileWrite($hFile, "SetEnv1=" & @CRLF)
+            FileWrite($hFile, "SymLinkCreate=" & @CRLF)
+            FileWrite($hFile, "SymLink1=" & @CRLF & @CRLF)
         EndIf
     Next
     FileClose($hFile)
