@@ -3,55 +3,51 @@
 #include-once
 #include "TrayMenu.au3"
 
-Local $sandboxieRaw = IniRead($settingsIni, "GLOBAL", "SandboxiePath", "")
-Local $sandboxiePath = _ResolvePath($sandboxieRaw, @ScriptDir)
-
 Func _RunWithSandboxie($exe, $args, $workDir, $sandboxName, $settingsIni)
     Local $sandboxieRaw = IniRead($settingsIni, "GLOBAL", "SandboxiePath", "")
     If $sandboxieRaw = "" Then
         MsgBox(16, "Sandboxie Error", "SandboxiePath not set in Settings.ini")
         Return SetError(1, 0, 0)
     EndIf
+
     Local $sandboxiePath = _ResolvePath($sandboxieRaw, @ScriptDir)
     If Not FileExists($sandboxiePath) Then
         MsgBox(16, "Sandboxie Error", "Sandboxie executable not found: " & $sandboxiePath)
         Return SetError(2, 0, 0)
     EndIf
 
+    ; Use Start.exe for Sandboxie-Plus, not SandMan.exe
+    ; If settings only gives SandMan.exe, fix your config to point to Start.exe
     Local $cmd = '"' & $sandboxiePath & '" /box:' & $sandboxName & ' "' & $exe & '"'
     If $args <> "" Then $cmd &= " " & $args
 
-    Run($cmd, $workDir)
+    Local $pid = Run($cmd, $workDir)
+    If $pid = 0 Then
+        MsgBox(16, "Sandboxie Error", "Failed to launch Sandboxie!")
+        Return SetError(3, 0, 0)
+    EndIf
 
-    ; Wait for the app to launch (up to 10 seconds)
-    Local $appExeName = StringTrimLeft($exe, StringInStr($exe, "\", 0, -1))
+    ; Attempt to get the real process name (works for .exe only)
+    Local $appExeName = $exe
+    If StringInStr($appExeName, "\") Then
+        $appExeName = StringTrimLeft($appExeName, StringInStr($appExeName, "\", 0, -1))
+    EndIf
+
+    ; Try to get the PID of the sandboxed app (optional, for monitoring)
     Local $sandboxedPid = 0
     Local $start = TimerInit()
-    While TimerDiff($start) < 10000
+    While TimerDiff($start) < 5000
         $sandboxedPid = ProcessExists($appExeName)
         If $sandboxedPid <> 0 Then ExitLoop
         Sleep(250)
     WEnd
 
-    If $sandboxedPid = 0 Then
-        ; Could not find app, but let Sandboxie run anyway (no error, just info)
-        MsgBox(48, "Sandboxie Warning", "Could not find sandboxed app process: " & $appExeName & @CRLF & "Sandboxie may still be running the app.")
-    Else
-        ; Wait for it to exit
-        While ProcessExists($sandboxedPid)
-            Sleep(500)
-        WEnd
-    EndIf
-
-    ; Close SandMan.exe if running
-    If ProcessExists("SandMan.exe") Then
-        ProcessClose("SandMan.exe")
-    EndIf
-
-    ; Stop Sandboxie service, request elevation only if needed
-    _StopSandboxieService()
-
-    Return 1
+    ; Return the launched PID (Sandboxie launcher), and sandboxed app PID if found
+    ; You should add these to $g_MonitoredApps for monitoring/cleanup in your main loop!
+    Local $result[2]
+	$result[0] = $pid
+	$result[1] = $sandboxedPid
+	Return $result
 EndFunc
 
 Func _StopSandboxieService()
@@ -67,21 +63,18 @@ Func _StopSandboxieService()
 
     ; Final check: forcibly kill SbieSvc.exe if still running
     If ProcessExists("SbieSvc.exe") Then
-        ; Try normal kill
         ProcessClose("SbieSvc.exe")
         Sleep(500)
-        ; If STILL running, force kill with taskkill
         If ProcessExists("SbieSvc.exe") Then
             ShellExecute(@ComSpec, ' /c taskkill /F /IM SbieSvc.exe', '', 'runas')
             Sleep(1000)
         EndIf
     EndIf
 
-    ; Debugging messages
     If ProcessExists("SbieSvc.exe") Then
         MsgBox(16, "Sandboxie Service", "SbieSvc.exe is STILL running even after forced kill!")
     Else
-        MsgBox(64, "Sandboxie Service", "SbieSvc.exe process is now closed.")
+;~         MsgBox(64, "Sandboxie Service", "SbieSvc.exe process is now closed.")
     EndIf
 EndFunc
 
