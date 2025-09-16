@@ -1,158 +1,147 @@
-; Tab_Ignore.au3
-
 #include-once
 #include "TrayMenu.au3"
 
 Global $guiW, $guiH, $listviewX, $listviewY, $btnW, $btnH, $footer_gap
 Global $g_IgnoreListFile = @ScriptDir & "\App\IgnoreList.ini"
-Global $g_IgnoreTabListView, $g_IgnoreEdit, $g_IgnoreBrowseBtn, $g_IgnoreAddBtn, $g_IgnoreDeleteBtn
-Global $g_IgnoreItems[0][2]
-Global Const $MAX_IGNORE_ITEMS = 300
+Global $g_IgnoreEdit, $g_IgnoreBrowseBtn, $g_IgnoreBrowseFolderBtn, $g_IgnoreEditBtn, $g_IgnoreSaveBtn
+Global Const $MAX_IGNORE_ITEMS = 500
 
 Func Tab_Ignore_Create($hGUI, $hTab)
     GUICtrlCreateTabItem("Ignore List")
-    $g_IgnoreTabListView = GUICtrlCreateListView("#|Paths", $listviewX, $listviewY, 360, 320, $LVS_SHOWSELALWAYS + $LVS_SINGLESEL)
-    GUICtrlSetFont($g_IgnoreTabListView, 10, 500, 0, "Consolas")
-    GUICtrlSendMsg($g_IgnoreTabListView, $LVM_SETCOLUMNWIDTH, 0, 40)
-    GUICtrlSendMsg($g_IgnoreTabListView, $LVM_SETCOLUMNWIDTH, 1, 300)
-    _Ignore_ReadItems()
-    _Ignore_ListViewPopulate()
-    $g_IgnoreEdit = GUICtrlCreateInput("", $listviewX, 380, 320, 20)
-    $g_IgnoreBrowseBtn = GUICtrlCreateButton("...", 350, 379, 30, 22)
-	GUICtrlSetTip($g_IgnoreBrowseBtn, "Select files to exclude from scans.")
-    $g_IgnoreAddBtn = GUICtrlCreateButton("Add", $listviewX, 440, $btnW, $btnH)
-	GUICtrlSetTip($g_IgnoreAddBtn, "Max: " & $MAX_IGNORE_ITEMS & " items")
-    $g_IgnoreDeleteBtn = GUICtrlCreateButton("Delete", 100, 440, $btnW, $btnH)
+    ; Multi-line, readonly Edit replaces ListView
+    $g_IgnoreEdit = GUICtrlCreateEdit("", $listviewX, $listviewY, $guiW-40, $guiH-155)
+    GUICtrlSetState($g_IgnoreEdit, $GUI_DISABLE)
+    GUICtrlSetFont($g_IgnoreEdit, 10, 500, 0, "Consolas")
+    GUICtrlSetTip($g_IgnoreEdit, "One path per line. eg:" & @CRLF & "Filename.exe" & @CRLF & "Folder" & @CRLF & "Parent\Folder")
+    _Ignore_EditPopulate()
+    $g_IgnoreEditBtn = GUICtrlCreateButton("✏️", $listviewX, $guiH-90, $btnH, $btnH)
+    GUICtrlSetTip($g_IgnoreEditBtn, "Enable editing of the ignore list.")
+    $g_IgnoreBrowseBtn = GUICtrlCreateButton("📄 ...", $listviewX + 35, $guiH-90, 40, $btnH)
+    GUICtrlSetTip($g_IgnoreBrowseBtn, "Select file to exclude from scans.")
+    GUICtrlSetState($g_IgnoreBrowseBtn, $GUI_DISABLE)
+    $g_IgnoreBrowseFolderBtn = GUICtrlCreateButton("📁 ...", $listviewX + 85, $guiH-90, 40, $btnH)
+    GUICtrlSetTip($g_IgnoreBrowseFolderBtn, "Select folder to exclude from scans.")
+    GUICtrlSetState($g_IgnoreBrowseFolderBtn, $GUI_DISABLE)
+    $g_IgnoreSaveBtn = GUICtrlCreateButton("💾", $listviewX + 135, $guiH-90, $btnH, $btnH)
+    GUICtrlSetTip($g_IgnoreSaveBtn, "Save changes to the ignore list.")
+    GUICtrlSetState($g_IgnoreSaveBtn, $GUI_DISABLE)
+    _Ignore_EditPopulate()
 EndFunc
 
-Func _Ignore_ReadItems()
-    Local $arr[0][2]
+Func _Ignore_EditPopulate()
+    Local $lines = ""
     If FileExists($g_IgnoreListFile) Then
-        Local $lines = FileReadToArray($g_IgnoreListFile)
-        If IsArray($lines) Then
-            For $i = 0 To UBound($lines) - 1
-                Local $val = StringStripWS($lines[$i], 3)
-                If $val <> "" Then
-                    ReDim $arr[UBound($arr)+1][2]
-                    $arr[UBound($arr)-1][0] = "Ignore" & (UBound($arr))
-                    $arr[UBound($arr)-1][1] = $val
+        Local $arr = FileReadToArray($g_IgnoreListFile)
+        If IsArray($arr) Then
+            For $i = 0 To UBound($arr) - 1
+                If StringStripWS($arr[$i], 3) <> "" Then
+                    $lines &= $arr[$i] & @CRLF
                 EndIf
             Next
         EndIf
     EndIf
-    $g_IgnoreItems = $arr
-EndFunc
-
-Func _Ignore_ListViewPopulate()
-    _GUICtrlListView_DeleteAllItems($g_IgnoreTabListView)
-    For $i = 0 To UBound($g_IgnoreItems) - 1
-        GUICtrlCreateListViewItem(StringFormat("%d|%s", $i+1, $g_IgnoreItems[$i][1]), $g_IgnoreTabListView)
-    Next
+    GUICtrlSetData($g_IgnoreEdit, StringTrimRight($lines, 2))
 EndFunc
 
 Func Ignore_HandleEvents($msg)
-    ; ---- Add Button ----
-    If $msg = $g_IgnoreAddBtn Then
-        _Ignore_AddItem()
-        Return
-    EndIf
-
-    ; ---- Delete Button ----
-    If $msg = $g_IgnoreDeleteBtn Then
-        ; Always get currently selected index!
-        Local $selIdx = -1
-        For $i = 0 To UBound($g_IgnoreItems) - 1
-            If _GUICtrlListView_GetItemSelected($g_IgnoreTabListView, $i) Then
-                $selIdx = $i
-                ExitLoop
-            EndIf
-        Next
-        If $selIdx = -1 Then Return ; Nothing selected
-        Local $result = MsgBox(33, "Confirm Ignore Delete", "Are you sure you want to DELETE this ignore path?" & @CRLF & _
-            "Click OK to proceed or Cancel to abort.")
-        If $result = 1 Then ; OK
-            _Ignore_DeleteItem($selIdx)
-        EndIf
-        Return
-    EndIf
-
-    ; ---- Browse Button ----
+    ; ---- Browse File Button ----
     If $msg = $g_IgnoreBrowseBtn Then
-        Local $browse = FileOpenDialog("Select file to ignore", @ScriptDir, "All files (*.*)", 1 + 2)
+        If GUICtrlGetState($g_IgnoreEdit) = $GUI_DISABLE Or _IsEditReadOnly($g_IgnoreEdit) Then Return
+        Local $browse = FileOpenDialog("Select file to ignore", @ScriptDir, "All files (*.*)", 1)
         If Not @error And $browse <> "" Then
             Local $path = $browse
             If StringLeft($path, 2) == StringLeft(@ScriptDir, 2) Then
-                $path = "?" & StringTrimLeft($path, 2)
+                $path = "?:" & StringMid($path, 3)
             EndIf
-            GUICtrlSetData($g_IgnoreEdit, $path)
+            Local $currText = GUICtrlRead($g_IgnoreEdit)
+            Local $arr = StringSplit($currText, @CRLF, 1)
+            For $i = 1 To $arr[0]
+                If StringStripWS($arr[$i], 3) == $path Then
+                    MsgBox(64, "Duplicate", "This ignore path already exists.")
+                    Return
+                EndIf
+            Next
+            If $arr[0] >= $MAX_IGNORE_ITEMS Then
+                MsgBox(64, "Limit reached", "You can only add up to " & $MAX_IGNORE_ITEMS & " ignore paths.")
+                Return
+            EndIf
+            If $currText <> "" Then
+                $currText &= @CRLF & $path
+            Else
+                $currText = $path
+            EndIf
+            GUICtrlSetData($g_IgnoreEdit, $currText)
         EndIf
         Return
     EndIf
 
-    ; ---- ListView selection logic (ALWAYS RUN, just like your other tabs!) ----
-    Local $selIdx = -1
-    For $i = 0 To UBound($g_IgnoreItems) - 1
-        If _GUICtrlListView_GetItemSelected($g_IgnoreTabListView, $i) Then
-            $selIdx = $i
-            ExitLoop
+    ; ---- Browse Folder Button ----
+    If $msg = $g_IgnoreBrowseFolderBtn Then
+        If GUICtrlGetState($g_IgnoreEdit) = $GUI_DISABLE Or _IsEditReadOnly($g_IgnoreEdit) Then Return
+        Local $folder = FileSelectFolder("Select folder to ignore", @ScriptDir, 1)
+        If Not @error And $folder <> "" Then
+            Local $path = $folder
+            If StringLeft($path, 2) == StringLeft(@ScriptDir, 2) Then
+                $path = "?:" & StringMid($path, 3)
+            EndIf
+            Local $currText = GUICtrlRead($g_IgnoreEdit)
+            Local $arr = StringSplit($currText, @CRLF, 1)
+            For $i = 1 To $arr[0]
+                If StringStripWS($arr[$i], 3) == $path Then
+                    MsgBox(64, "Duplicate", "This ignore path already exists.")
+                    Return
+                EndIf
+            Next
+            If $arr[0] >= $MAX_IGNORE_ITEMS Then
+                MsgBox(64, "Limit reached", "You can only add up to " & $MAX_IGNORE_ITEMS & " ignore paths.")
+                Return
+            EndIf
+            If $currText <> "" Then
+                $currText &= @CRLF & $path
+            Else
+                $currText = $path
+            EndIf
+            GUICtrlSetData($g_IgnoreEdit, $currText)
         EndIf
-    Next
-
-    Static $lastIdx = -1
-    If $selIdx <> $lastIdx Then
-        If $selIdx <> -1 And $selIdx < UBound($g_IgnoreItems) Then
-            GUICtrlSetData($g_IgnoreEdit, _ResolvePath($g_IgnoreItems[$selIdx][1], @ScriptDir))
-        Else
-            GUICtrlSetData($g_IgnoreEdit, "")
-        EndIf
-        $lastIdx = $selIdx
-    EndIf
-EndFunc
-
-Func _Ignore_AddItem()
-    If UBound($g_IgnoreItems) >= $MAX_IGNORE_ITEMS Then
-        MsgBox(64, "Limit reached", "You can only add up to " & $MAX_IGNORE_ITEMS & " ignore paths.")
         Return
     EndIf
-    Local $newVal = GUICtrlRead($g_IgnoreEdit)
-    If $newVal = "" Then Return
-    ; Check for duplicate
-    For $i = 0 To UBound($g_IgnoreItems) - 1
-        If $g_IgnoreItems[$i][1] == $newVal Then
-            MsgBox(64, "Duplicate", "This ignore path already exists.")
+
+    ; ---- Edit Button ----
+    If $msg = $g_IgnoreEditBtn Then
+        GUICtrlSetState($g_IgnoreEdit, $GUI_ENABLE)
+        GUICtrlSetState($g_IgnoreEditBtn, $GUI_DISABLE)
+        GUICtrlSetState($g_IgnoreSaveBtn, $GUI_ENABLE)
+        GUICtrlSetState($g_IgnoreBrowseBtn, $GUI_ENABLE)
+        GUICtrlSetState($g_IgnoreBrowseFolderBtn, $GUI_ENABLE)
+        Return
+    EndIf
+
+    ; ---- Save Button ----
+    If $msg = $g_IgnoreSaveBtn Then
+        Local $currText = GUICtrlRead($g_IgnoreEdit)
+        Local $arr = StringSplit($currText, @CRLF, 1)
+        If $arr[0] > $MAX_IGNORE_ITEMS Then
+            MsgBox(64, "Limit reached", "You can only save up to " & $MAX_IGNORE_ITEMS & " ignore paths.")
             Return
         EndIf
-    Next
-    Local $key = "Ignore" & (UBound($g_IgnoreItems)+1)
-    ReDim $g_IgnoreItems[UBound($g_IgnoreItems)+1][2]
-    $g_IgnoreItems[UBound($g_IgnoreItems)-1][0] = $key
-    $g_IgnoreItems[UBound($g_IgnoreItems)-1][1] = $newVal
-    _Ignore_ListViewPopulate()
-    GUICtrlSetData($g_IgnoreEdit, "")
-    Ignore_Save()
-EndFunc
-
-Func _Ignore_DeleteItem($selIdx)
-    If $selIdx >= 0 And $selIdx < UBound($g_IgnoreItems) Then
-        For $i = $selIdx To UBound($g_IgnoreItems) - 2
-            $g_IgnoreItems[$i][0] = $g_IgnoreItems[$i+1][0]
-            $g_IgnoreItems[$i][1] = $g_IgnoreItems[$i+1][1]
+        Local $hFile = FileOpen($g_IgnoreListFile, $FO_OVERWRITE)
+        If $hFile = -1 Then Return
+        For $i = 1 To $arr[0]
+            Local $item = StringStripWS($arr[$i], 3)
+            If $item <> "" Then
+                FileWriteLine($hFile, $item)
+            EndIf
         Next
-        ReDim $g_IgnoreItems[UBound($g_IgnoreItems)-1][2]
-        _Ignore_ListViewPopulate()
-        GUICtrlSetData($g_IgnoreEdit, "")
-        Ignore_Save()
+        FileClose($hFile)
+        GUICtrlSetState($g_IgnoreEdit, $GUI_DISABLE)
+        GUICtrlSetState($g_IgnoreEditBtn, $GUI_ENABLE)
+        GUICtrlSetState($g_IgnoreSaveBtn, $GUI_DISABLE)
+        GUICtrlSetState($g_IgnoreBrowseBtn, $GUI_DISABLE)
+        GUICtrlSetState($g_IgnoreBrowseFolderBtn, $GUI_DISABLE)
+        Return
     EndIf
 EndFunc
 
-Func Ignore_Save()
-    Local $hFile = FileOpen($g_IgnoreListFile, $FO_OVERWRITE)
-    If $hFile = -1 Then Return
-    For $i = 0 To UBound($g_IgnoreItems) - 1
-        Local $item = StringStripWS($g_IgnoreItems[$i][1], 3)
-        If $item <> "" Then
-            FileWriteLine($hFile, $item)
-        EndIf
-    Next
-    FileClose($hFile)
+Func _IsEditReadOnly($idEdit)
+    Return (BitAND(GUICtrlGetState($idEdit), $GUI_DISABLE) = $GUI_DISABLE)
 EndFunc
