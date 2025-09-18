@@ -1,21 +1,19 @@
-; Tab_EnvVars.au3
+; EnvVarsListView.au3
 ; Displays environment variables in a ListView with descriptions, allows copying variable name
-; When a variable is copied, shows a green "Copied!" label for 1 second.
+; When a variable is copied, shows a green "Copied!" label for 3 second.
 
 #include-once
 #include <GUIConstantsEx.au3>
 #include <WindowsConstants.au3>
+#include <ListViewConstants.au3>
 #include <GuiListView.au3>
-#include <Array.au3>
 #include <Clipboard.au3>
-#include <WinAPI.au3>
-#include <Timers.au3>
 
-Global $g_EnvVarsListView, $g_EnvVarsLabelCopied, $g_EnvVarsLabelTimer = -1
-Global $g_EnvVarsFooterMsg
-Global $g_EnvVarsLabelCopied
+Global $g_EnvVarsListView = 0
+Global $g_EnvVarsMsgLabel = 0
+Global $g_LastEnvVarsSelected = -1
 Global $g_EnvVarsLabelTimer = 0
-Global $g_EnvVarsLabelTimeout = 3000 ; milliseconds
+Global $g_EnvVarsLabelTimeout = 1500 ; ms
 
 Global $g_EnvVars[43][2]
 $g_EnvVars[0][0] = "%ALLUSERSPROFILE%"
@@ -107,51 +105,53 @@ $g_EnvVars[42][1] = "Windows_NT"
 
 Func Tab_EnvVars_Create($hGUI, $hTab)
     GUICtrlCreateTabItem("Env Vars")
-    Local $rows = UBound($g_EnvVars)
-    Local $w = $guiW -20, $h = 550 ; match tab size
-    ; ListView
-    $g_EnvVarsListView = GUICtrlCreateListView("Variable|Description", $listviewX, $listviewY, $w-20, $guiH-155, $LVS_SHOWSELALWAYS + $LVS_SINGLESEL)
-    GUICtrlSetFont($g_EnvVarsListView, 10, 400, 0, "Consolas")
-    GUICtrlSetBkColor($g_EnvVarsListView, 0xF8F8F8)
-    GUICtrlSetColor($g_EnvVarsListView, 0x222222)
-    GUICtrlSetResizing($g_EnvVarsListView, $GUI_DOCKALL)
-    ; Add all environment variable rows
-    For $i = 0 To $rows - 1
-        GUICtrlCreateListViewItem($g_EnvVars[$i][0] & "|" & $g_EnvVars[$i][1], $g_EnvVarsListView)
-    Next
-
-    _GUICtrlListView_SetColumnWidth($g_EnvVarsListView, 0, 200)
+    $g_EnvVarsListView = GUICtrlCreateListView("Variable|Description", $listviewX, $listviewY, $guiW-40, $guiH-155, _
+        BitOR($LVS_REPORT, $LVS_SHOWSELALWAYS), BitOR($LVS_EX_FULLROWSELECT, $LVS_EX_GRIDLINES))
+	_GUICtrlListView_SetColumnWidth($g_EnvVarsListView, 0, 200)
     _GUICtrlListView_SetColumnWidth($g_EnvVarsListView, 1, 500)
-    ; Footer message
-    $g_EnvVarsFooterMsg = GUICtrlCreateLabel("Double-click to copy variable to clipboard.", 20, $guiH-100, 350, 30)
-    GUICtrlSetFont($g_EnvVarsFooterMsg, 10, 400, 0, "Segoe UI")
+    GUICtrlSetResizing($g_EnvVarsListView, $GUI_DOCKAUTO)
+    $g_EnvVarsFooterMsg = GUICtrlCreateLabel("System Environment Variables (click to copy variable name)", 20, $guiH-100, 470, 20)
+	GUICtrlSetFont($g_EnvVarsFooterMsg, 10, 400, 0, "Segoe UI")
     GUICtrlSetColor($g_EnvVarsFooterMsg, 0x666666)
-    GUICtrlSetBkColor($g_EnvVarsFooterMsg, $GUI_BKCOLOR_TRANSPARENT)
-    GUICtrlSetResizing($g_EnvVarsFooterMsg, $GUI_DOCKLEFT + $GUI_DOCKBOTTOM)
-    ; "Copied!" label
-    $g_EnvVarsLabelCopied = GUICtrlCreateLabel("", 20, $h - $footer_gap + 25, 350, 25)
-    GUICtrlSetFont($g_EnvVarsLabelCopied, 10, 700, 0, "Segoe UI")
-    GUICtrlSetColor($g_EnvVarsLabelCopied, 0x008000) ; Green
-    GUICtrlSetBkColor($g_EnvVarsLabelCopied, $GUI_BKCOLOR_TRANSPARENT)
-    GUICtrlSetState($g_EnvVarsLabelCopied, $GUI_HIDE)
-    ; Register double-click notification for listview
-    GUIRegisterMsg($WM_NOTIFY, "WM_NOTIFY_ENVVARS_TAB")
 
-    Return 1
+    $g_EnvVarsMsgLabel = GUICtrlCreateLabel("", 20, $guiH-70, 470, 22)
+    GUICtrlSetFont($g_EnvVarsMsgLabel, 10, 700, 0, "Segoe UI")
+    GUICtrlSetColor($g_EnvVarsMsgLabel, 0x008000) ; Green
+    GUICtrlSetState($g_EnvVarsMsgLabel, $GUI_HIDE)
+    _EnvVars_PopulateList()
+    GUICtrlCreateTabItem("") ; End tab item
 EndFunc
 
-Func WM_NOTIFY_ENVVARS_TAB($hWnd, $Msg, $wParam, $lParam)
-    Local $tNMHDR = DllStructCreate($tagNMHDR, $lParam)
-    Local $code = DllStructGetData($tNMHDR, "Code")
-    If $wParam = $g_EnvVarsListView And $code = -3 Then
-        Local $tNMITEMACTIVATE = DllStructCreate($tagNMITEMACTIVATE, $lParam)
-        Local $iItem = DllStructGetData($tNMITEMACTIVATE, "Index")
-        If $iItem <> -1 And $iItem >= 0 And $iItem < UBound($g_EnvVars) Then
-            ClipPut($g_EnvVars[$iItem][0])
-            GUICtrlSetData($g_EnvVarsLabelCopied, "Copied: " & $g_EnvVars[$iItem][0])
-            GUICtrlSetState($g_EnvVarsLabelCopied, $GUI_SHOW)
+Func _EnvVars_PopulateList()
+    _GUICtrlListView_DeleteAllItems($g_EnvVarsListView)
+    For $i = 0 To UBound($g_EnvVars) - 1
+        Local $itemIndex = _GUICtrlListView_AddItem($g_EnvVarsListView, $g_EnvVars[$i][0])
+        _GUICtrlListView_AddSubItem($g_EnvVarsListView, $itemIndex, $g_EnvVars[$i][1], 1)
+    Next
+EndFunc
+
+Func Tab_EnvVars_HandleEvents($msg)
+    Local $selected = _GUICtrlListView_GetSelectedIndices($g_EnvVarsListView)
+    If $selected <> "" Then
+        Local $index = Int($selected)
+        If $index <> $g_LastEnvVarsSelected Then
+            $g_LastEnvVarsSelected = $index
+            Local $varname = $g_EnvVars[$index][0]
+            ClipPut($varname) ; <<< Clipboard copy logic added here
+            GUICtrlSetData($g_EnvVarsMsgLabel, "Copied: " & $varname)
+            GUICtrlSetState($g_EnvVarsMsgLabel, $GUI_SHOW)
             $g_EnvVarsLabelTimer = TimerInit()
         EndIf
+    Else
+        If $g_LastEnvVarsSelected <> -1 Then
+            $g_LastEnvVarsSelected = -1
+            GUICtrlSetState($g_EnvVarsMsgLabel, $GUI_HIDE)
+        EndIf
     EndIf
-    Return $GUI_RUNDEFMSG
+
+    ; Hide message label after timeout
+    If $g_EnvVarsLabelTimer <> 0 And TimerDiff($g_EnvVarsLabelTimer) > $g_EnvVarsLabelTimeout Then
+        GUICtrlSetState($g_EnvVarsMsgLabel, $GUI_HIDE)
+        $g_EnvVarsLabelTimer = 0
+    EndIf
 EndFunc
