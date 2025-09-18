@@ -6,10 +6,11 @@
 #include <Array.au3>
 #include <WindowsConstants.au3>
 #include <StructureConstants.au3>
+#include "Utils.au3"
 
 Global $g_CategoryIniDir = @ScriptDir & "\App"
 Global $g_AppTreeView, $g_AppFields, $g_IniFiles, $g_AppSections, $g_SelectedIni, $g_SelectedSection
-Global $g_SaveBtn, $g_IgnoreBtn, $g_IgnoreEdit
+Global $g_SaveBtn, $g_IgnoreBtn, $g_IgnoreEdit, $g_RefreshBtn
 Global $g_AppTreeItemToSection = ObjCreate("Scripting.Dictionary")
 Global $g_AppTreeItemToIni = ObjCreate("Scripting.Dictionary")
 Global $g_AppLastSelectedItem = 0
@@ -18,7 +19,9 @@ Global $g_AppCategoryTreeItems = ObjCreate("Scripting.Dictionary")
 Global $g_AppsSymlinksEdit
 Global Const $ES_MULTILINE = 0x0004
 Global Const $ES_WANTRETURN = 0x1000
-Global $g_AppTreeViewMenu, $g_AppMenuDeleteItem
+Global Const $ES_AUTOHSCROLL  = 0x0080
+Global Const $ES_AUTOVSCROLL  = 0x0020
+Global $g_AppTreeViewMenu, $g_AppMenuDeleteItem, $g_AppMenuEditIniItem
 Global $g_RightClickedItemID = 0
 
 Func Tab_Apps_Create($hGUI, $hTab)
@@ -27,36 +30,44 @@ Func Tab_Apps_Create($hGUI, $hTab)
 
     ; Right side fields container
     $g_AppFields = ObjCreate("Scripting.Dictionary")
-    Local $fields = ["ButtonText", "RunFile", "RunAsAdmin", "WorkDir", "Arguments", "SingleInstance", "Sandboxie", "SandboxName", "Category", "Fave", "Hide", "SymLinkCreate"]
+    ; SetEnv comes after Arguments
+    Local $fields = ["ButtonText", "RunFile", "RunAsAdmin", "WorkDir", "Arguments", "SetEnv", "SingleInstance", "Sandboxie", "SandboxName", "Category", "Fave", "Hide", "Symlinks"]
     For $i = 0 To UBound($fields) - 1
         GUICtrlCreateLabel($fields[$i] & ":", $x, 60 + $i * 27, 70, 18)
-        If StringInStr("RunAsAdmin SingleInstance Sandboxie SymLinkCreate Fave Hide", $fields[$i]) Then
+        If StringInStr("RunAsAdmin SingleInstance Sandboxie Fave Hide", $fields[$i]) Then
             $g_AppFields($fields[$i]) = GUICtrlCreateCheckbox("", $x + 90, 56 + $i * 27, 18, 18)
+        ElseIf $fields[$i] = "Symlinks" Then
+            ; Do not create input here, will be created manually below
+            ContinueLoop
         Else
+            ; Ensure SetEnv is a single-line input (not multiline edit)
             $g_AppFields($fields[$i]) = GUICtrlCreateInput("", $x + 90, 56 + $i * 27, 250, 18)
         EndIf
     Next
 
-    ; Add Symlinks multiline edit field below regular fields
-    Local $symlinkY = 60 + UBound($fields) * 27
-    GUICtrlCreateLabel("Symlinks:", $x, $symlinkY, 70, 18)
-    $g_AppsSymlinksEdit = GUICtrlCreateEdit("", $x + 90, $symlinkY, 250, 130, BitOR($ES_MULTILINE, $ES_WANTRETURN))
-
+    ; After the loop, create SymLinkCreate checkbox and Symlinks field, both manually positioned
+    Local $symlinkY = 60 + (UBound($fields) - 1) * 27
+    $g_AppFields("SymLinkCreate") = GUICtrlCreateCheckbox("", $x + 90, $symlinkY - 4, 18, 18)
+	$g_AppsSymlinksEdit = GUICtrlCreateEdit("", $x, $symlinkY + 20, 340, 120, _
+    BitOR($ES_MULTILINE, $ES_WANTRETURN, $ES_AUTOHSCROLL, $ES_AUTOVSCROLL, $WS_VSCROLL, $WS_HSCROLL))
     $g_AppTreeView = GUICtrlCreateTreeView($listviewX, $listviewY, $x + 90, $guiH-155, BitOR($TVS_HASBUTTONS, $TVS_LINESATROOT, $TVS_SHOWSELALWAYS))
-    $g_IgnoreBtn = GUICtrlCreateButton("🚫", $x + 10, 440, $btnH, $btnH)
+    $g_IgnoreBtn = GUICtrlCreateButton("🚫", 177, 485, $btnH, $btnH)
     GUICtrlSetTip($g_IgnoreBtn, "Add to Ignore List and Delete.")
-    $g_SaveBtn = GUICtrlCreateButton("💾", $x + 40, 440, $btnH, $btnH)
+    $g_SaveBtn = GUICtrlCreateButton("💾", 212, 485, $btnH, $btnH)
     GUICtrlSetTip($g_SaveBtn, "Save before selecting items in Tree.")
+	$g_RefreshBtn = GUICtrlCreateButton("🔄", 247, 485, $btnH, $btnH)
+    GUICtrlSetTip($g_RefreshBtn, "Save & Refresh Tree")
 
     ; Create context menu for TreeView and delete item
     $g_AppTreeViewMenu = GUICtrlCreateContextMenu($g_AppTreeView)
     $g_AppMenuDeleteItem = GUICtrlCreateMenuItem("Delete", $g_AppTreeViewMenu)
+	$g_AppMenuEditIniItem = GUICtrlCreateMenuItem("Edit INI File", $g_AppTreeViewMenu)
 	
     ; Disable all buttons on startup
     _AppTab_Buttons_Disable()
-	_AppTab_LoadIniFilesAndApps()  ; Sets up dictionaries and reads INI files
-	_AppTab_ClearTree1()           ; Creates TreeView control + context menu
-	_AppTab_RecreateTree()         ; Populates the tree with data
+    _AppTab_LoadIniFilesAndApps()  ; Sets up dictionaries and reads INI files
+    _AppTab_ClearTree1()           ; Creates TreeView control + context menu
+    _AppTab_RecreateTree()         ; Populates the tree with data
     _AppTab_DisableFields()
 EndFunc
 
@@ -78,6 +89,7 @@ Func _AppTab_ClearTree1()
     ; Re-create context menu after deletion
     $g_AppTreeViewMenu = GUICtrlCreateContextMenu($g_AppTreeView)
     $g_AppMenuDeleteItem = GUICtrlCreateMenuItem("Delete", $g_AppTreeViewMenu)
+	$g_AppMenuEditIniItem = GUICtrlCreateMenuItem("Edit INI File", $g_AppTreeViewMenu)
 EndFunc
 
 Func _AppTab_ClearTree2()
@@ -117,6 +129,7 @@ Func _AppTab_RecreateTree()
     ; Add Favourites node (alphabetical)
     If $favourites.Count > 0 Then
         Local $favNode = GUICtrlCreateTreeViewItem("Favourites", $g_AppTreeView)
+		$g_AppCategoryTreeItems.Add($favNode, "Favourites")
         ; Collect and sort favourite app names
         Local $faveNames[0]
         For $appName In $favourites.Keys
@@ -183,18 +196,24 @@ EndFunc
 Func _AppTab_Buttons_Enable()
     GUICtrlSetState($g_IgnoreBtn, $GUI_ENABLE)
     GUICtrlSetState($g_SaveBtn, $GUI_ENABLE)
+    GUICtrlSetState($g_RefreshBtn, $GUI_ENABLE)
 EndFunc
 
 ; Disable all buttons (Ignore, Save)
 Func _AppTab_Buttons_Disable()
     GUICtrlSetState($g_IgnoreBtn, $GUI_DISABLE)
     GUICtrlSetState($g_SaveBtn, $GUI_DISABLE)
+    GUICtrlSetState($g_RefreshBtn, $GUI_DISABLE)
 EndFunc
 
 Func Tab_App_HandleEvents($msg)
     ; Handle buttons and context menu
     Switch $msg
-		Case $g_SaveBtn
+        Case $g_SaveBtn
+            If $g_SelectedIni <> "" And $g_SelectedSection <> "" Then
+                _AppTab_SaveFields($g_SelectedIni, $g_SelectedSection)
+            EndIf
+		Case $g_RefreshBtn
 			If $g_SelectedIni <> "" And $g_SelectedSection <> "" Then
 				_AppTab_SaveFields($g_SelectedIni, $g_SelectedSection)
 				_AppTab_LoadIniFilesAndApps()  ; Re-reads INI files to get latest data
@@ -213,6 +232,12 @@ Func Tab_App_HandleEvents($msg)
             _AppTab_IgnoreSelected()
         Case $g_AppMenuDeleteItem
             _AppTab_DeleteSelected()
+		Case $g_AppMenuEditIniItem
+			Local $targetItem = ($g_RightClickedItemID <> 0) ? $g_RightClickedItemID : GUICtrlRead($g_AppTreeView)
+			If $targetItem = 0 Or Not $g_AppTreeItemToSection.Exists($targetItem) Then Return
+			Local $appName = $g_AppTreeItemToSection.Item($targetItem)
+			Local $iniFile = $g_AppTreeItemToIni.Item($targetItem)
+			If FileExists($iniFile) Then ShellExecute($iniFile)
         Case $g_AppFields("SymLinkCreate")
             ; Enable/disable symlinks field based on checkbox
             If GUICtrlRead($g_AppFields("SymLinkCreate")) = $GUI_CHECKED Then
@@ -267,6 +292,7 @@ EndFunc
 
 Func _AppTab_PopulateFields($iniFile, $section)
     For $key In $g_AppFields.Keys()
+        ; Populate standard fields
         Local $val = IniRead($iniFile, $section, $key, "")
         If StringInStr("RunAsAdmin SingleInstance Sandboxie SymLinkCreate Fave Hide", $key) Then
             GUICtrlSetState($g_AppFields($key), ($val = "1") ? $GUI_CHECKED : $GUI_UNCHECKED)
@@ -275,6 +301,9 @@ Func _AppTab_PopulateFields($iniFile, $section)
         EndIf
         GUICtrlSetState($g_AppFields($key), $GUI_ENABLE)
     Next
+    ; SetEnv value (from SetEnv1 in INI)
+    Local $setenv_val = IniRead($iniFile, $section, "SetEnv1", "")
+    GUICtrlSetData($g_AppFields("SetEnv"), $setenv_val)
     ; Populate symlinks multiline edit
     Local $symlinks = ""
     Local $idx = 1
@@ -305,7 +334,17 @@ Func _AppTab_SaveFields($iniFile, $section)
             Local $v = (GUICtrlRead($g_AppFields($key)) = $GUI_CHECKED) ? "1" : "0"
             IniWrite($iniFile, $section, $key, $v)
         Else
-            IniWrite($iniFile, $section, $key, GUICtrlRead($g_AppFields($key)))
+            ; For SetEnv, always write to SetEnv1 as a single line with pipes (never multiline)
+            If $key = "SetEnv" Then
+                Local $setenv_val = GUICtrlRead($g_AppFields("SetEnv"))
+                ; Replace any accidental line breaks with pipes
+                $setenv_val = StringReplace($setenv_val, @CRLF, "|")
+                $setenv_val = StringReplace($setenv_val, @LF, "|")
+                $setenv_val = StringReplace($setenv_val, @CR, "|")
+                IniWrite($iniFile, $section, "SetEnv1", $setenv_val)
+            Else
+                IniWrite($iniFile, $section, $key, GUICtrlRead($g_AppFields($key)))
+            EndIf
         EndIf
         GUICtrlSetState($g_AppFields($key), $GUI_DISABLE)
     Next
@@ -329,8 +368,8 @@ Func _AppTab_SaveFields($iniFile, $section)
         Next
     EndIf
     GUICtrlSetState($g_AppsSymlinksEdit, $GUI_DISABLE)
-    ; Disable SandboxName field after save
     GUICtrlSetState($g_AppFields("SandboxName"), $GUI_DISABLE)
+    RemoveExtraBlankLines($iniFile)
 EndFunc
 
 Func _AppTab_ClearFields()
@@ -342,6 +381,7 @@ Func _AppTab_ClearFields()
         EndIf
         GUICtrlSetState($g_AppFields($key), $GUI_ENABLE)
     Next
+    GUICtrlSetData($g_AppFields("SetEnv"), "")
     GUICtrlSetData($g_AppsSymlinksEdit, "")
     ; Enable/disable Symlinks field according to SymLinkCreate checkbox
     If GUICtrlRead($g_AppFields("SymLinkCreate")) = $GUI_CHECKED Then
@@ -449,6 +489,7 @@ Func _AppTab_DeleteSelected($skipConfirm = False)
     EndIf
 
     IniDelete($iniFile, $appName)
+	RemoveExtraBlankLines($iniFile)
     GUICtrlDelete($targetItem)
     $g_AppSections.Remove($appName)
     $g_AppTreeItemToSection.Remove($targetItem)
@@ -486,7 +527,7 @@ Func _AppTab_IgnoreSelected()
     Local $exists = False
     If IsArray($ignoreArr) Then
         For $i = 0 To UBound($ignoreArr) - 1
-            If StringStripWS($ignoreArr[$i], 3) = $ignorePath Then
+            If StringCompare(StringStripWS($ignoreArr[$i], 3), StringStripWS($ignorePath, 3), 1) = 0 Then
                 $exists = True
                 ExitLoop
             EndIf
@@ -512,6 +553,7 @@ Func _AppTab_IgnoreSelected()
     
     ; Delete from INI file
     IniDelete($iniFile, $appName)
+	RemoveExtraBlankLines($iniFile)
     
     ; Remove from TreeView and clean up dictionaries
     GUICtrlDelete($itemToDelete)
