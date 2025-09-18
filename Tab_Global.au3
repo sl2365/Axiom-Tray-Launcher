@@ -16,9 +16,11 @@ Global $g_SymLinksListView, $g_SymLinksAddBtn, $g_SymLinksSaveBtn
 Global $g_SymLinksItems[0][2], $g_SymLinksSelectedIdx = -1, $g_SymLinksLastSelectedIdx = -1
 Global $g_SymLinksListViewMenu, $g_SymLinksDeleteMenuItem
 Global $g_SymLinksAddCheckbox, $g_SymLinksRemoveCheckbox, $g_CreateSymlinksBtn, $g_RemoveSymlinksBtn
+Global $g_SymLinksTypeCheckbox
 
 ;----------------- Unified Edit Field -----------------
 Global $g_CombinedEdit
+Global $g_CommonBrowseBtn
 
 Func _Vars_Buttons_DisableAll()
     GUICtrlSetState($g_VarsAddBtn, $GUI_DISABLE)
@@ -50,6 +52,11 @@ Func _SymLinks_Buttons_EnableSaveOnly()
     GUICtrlSetState($g_SymLinksSaveBtn, $GUI_ENABLE)
 EndFunc
 
+Func _Common_Buttons_EnableAdd()
+    GUICtrlSetState($g_VarsAddBtn, $GUI_ENABLE)
+    GUICtrlSetState($g_SymLinksAddBtn, $GUI_ENABLE)
+EndFunc
+
 Func Tab_Global_Create($hGUI, $hTab)
     GUICtrlCreateTabItem("Global")
 	
@@ -77,18 +84,21 @@ Func Tab_Global_Create($hGUI, $hTab)
     _Vars_ReadItems()
     _Vars_ListViewPopulate()
 
-    ; ---- Unified Edit Field ----
-    $g_CombinedEdit = GUICtrlCreateInput("", 80, 382, 490, 20)
+    ; ---- Common Edit Field ----
+    $g_CombinedEdit = GUICtrlCreateInput("", 125, 382, 445, 20)
     GUICtrlSetTip($g_CombinedEdit, "Add System/User EnvVars or SymLinks" & @CRLF & "(Type, press 'Enter' Click '➕')")
 
+    ; ---- Common Buttons ----
     $g_VarsAddBtn    = GUICtrlCreateButton("➕", 20, 380, $btnH, $btnH)
     GUICtrlSetTip($g_VarsAddBtn, "Add to Variables")
     $g_VarsSaveBtn   = GUICtrlCreateButton("💾", 50, 380, $btnH, $btnH)
     GUICtrlSetTip($g_VarsSaveBtn, "Save Variable")
-    $g_SymLinksAddBtn    = GUICtrlCreateButton("➕", 605, 380, $btnH, $btnH)
-    GUICtrlSetTip($g_SymLinksAddBtn, "Add to SymLinks")
+	$g_CommonBrowseBtn = GUICtrlCreateButton("📂 ...", 80, 380, 40, $btnH)
+	GUICtrlSetTip($g_CommonBrowseBtn, "Add folder as EnvVar")
     $g_SymLinksSaveBtn   = GUICtrlCreateButton("💾", 575, 380, $btnH, $btnH)
     GUICtrlSetTip($g_SymLinksSaveBtn, "Save SymLink")
+    $g_SymLinksAddBtn    = GUICtrlCreateButton("➕", 605, 380, $btnH, $btnH)
+    GUICtrlSetTip($g_SymLinksAddBtn, "Add to SymLinks")
 
     ; ---- SymLinks ListView (Right) ----
     $g_SymLinksListView = GUICtrlCreateListView("#|SymLinks", 280, 50, 350, 320, $LVS_SHOWSELALWAYS + $LVS_SINGLESEL)
@@ -102,6 +112,9 @@ Func Tab_Global_Create($hGUI, $hTab)
     _SymLinks_ReadItems()
     _SymLinks_ListViewPopulate()
 
+	$g_SymLinksTypeCheckbox = GUICtrlCreateCheckbox("Use ☑️ SymLink or 🟦 Junction", 370, 405, 220, 22)
+	Local $symLinksTypeVal = IniRead($g_SettingsIni, "SymLinks", "SymLinksType", "0")
+	GUICtrlSetState($g_SymLinksTypeCheckbox, ($symLinksTypeVal = "1") ? $GUI_CHECKED : $GUI_UNCHECKED)
     $g_SymLinksAddCheckbox = GUICtrlCreateCheckbox("Create Symlinks on Startup", 370, 433, 220, 22)
     $g_SymLinksRemoveCheckbox = GUICtrlCreateCheckbox("Remove Symlinks on Shutdown", 370, 461, 220, 22)
     $g_CreateSymlinksBtn = GUICtrlCreateButton("➕ Create Symlinks", 350, 490, 100, $btnH)
@@ -146,6 +159,21 @@ Func Tab_Global_HandleEvents($msg)
             GUICtrlSetData($g_SandboxiePathEdit, $path)
         EndIf
     EndIf
+	
+	If $msg = $g_CommonBrowseBtn Then
+		; Open folder dialog
+		Local $folder = FileSelectFolder("Select Folder", "", 1)
+		If Not @error And $folder <> "" Then
+			Local $scriptDrive = StringLeft(@ScriptDir, 2)
+			Local $selectedDrive = StringLeft($folder, 2)
+			If $selectedDrive = $scriptDrive Then
+				$folder = "?:" & StringMid($folder, 3)
+			EndIf
+			GUICtrlSetData($g_CombinedEdit, $folder)
+		_Common_Buttons_EnableAdd()
+;~ 		GUICtrlSetState($g_CombinedEdit, $GUI_FOCUS)
+		EndIf
+	EndIf
 
     If $msg = $g_OKBtn Then
         Local $v = (GUICtrlRead($UPDATE_ON_START_KEY) = $GUI_CHECKED) ? "1" : "0"
@@ -256,6 +284,7 @@ Func Vars_HandleEvents($msg)
         And $msg <> $g_VarsAddBtn _
         And $msg <> $g_VarsSaveBtn _
         And $msg <> $g_VarsListView _
+		And $msg <> $g_CommonBrowseBtn _
         And $msg > 0 Then
         If BitAND(GUICtrlGetState($g_VarsAddBtn), $GUI_ENABLE) Then
         _Vars_Buttons_DisableAll()
@@ -273,12 +302,12 @@ Func _Vars_SaveEdits()
 EndFunc
 
 Func _Vars_AddItem()
-    If UBound($g_VarsItems) >= 100 Then
-        MsgBox(64, "Limit reached", "You can only add up to 100 variables.")
-        Return
-    EndIf
     Local $newVal = GUICtrlRead($g_CombinedEdit)
-    If $newVal = "" Then Return
+    Local $scriptDrive = StringLeft(@ScriptDir, 2)
+    Local $selectedDrive = StringLeft($newVal, 2)
+    If StringLeft($newVal, 3) <> "?:\" And $selectedDrive = $scriptDrive Then
+        $newVal = "?:" & StringMid($newVal, 3)
+    EndIf
     Local $key = "SetVar" & (UBound($g_VarsItems)+1)
     ReDim $g_VarsItems[UBound($g_VarsItems)+1][2]
     $g_VarsItems[UBound($g_VarsItems)-1][0] = $key
@@ -319,6 +348,7 @@ Func Vars_Save()
     For $i = 0 To UBound($g_VarsItems) - 1
         IniWrite($g_SettingsIni, "Variables", $g_VarsItems[$i][0], $g_VarsItems[$i][1])
     Next
+	RemoveExtraBlankLines($g_SettingsIni)
 EndFunc
 
 ;----------------- SymLinks Section Logic -----------------
@@ -407,11 +437,16 @@ Func SymLinks_HandleEvents($msg)
             _SymLinks_Buttons_DisableAll()
         EndIf
     EndIf
+	
+	If $msg = $g_SymLinksTypeCheckbox Then
+        IniWrite($g_SettingsIni, "SymLinks", "SymLinksType", GUICtrlRead($g_SymLinksTypeCheckbox) = $GUI_CHECKED ? "1" : "0")
+    EndIf
 
     If $msg <> $g_CombinedEdit _
         And $msg <> $g_SymLinksAddBtn _
         And $msg <> $g_SymLinksSaveBtn _
         And $msg <> $g_SymLinksListView _
+		And $msg <> $g_CommonBrowseBtn _
         And $msg > 0 Then
         If BitAND(GUICtrlGetState($g_SymLinksAddBtn), $GUI_ENABLE) Then
             _SymLinks_Buttons_DisableAll()
@@ -484,6 +519,7 @@ Func SymLinks_Save()
     For $i = 0 To UBound($g_SymLinksItems) - 1
         IniWrite($g_SettingsIni, "SymLinks", $g_SymLinksItems[$i][0], $g_SymLinksItems[$i][1])
     Next
+	RemoveExtraBlankLines($g_SettingsIni)
 EndFunc
 
 Func _SymLinks_EnableDisableSymlinkControls()
