@@ -79,6 +79,7 @@ Func SettingsGUI_HandleEvents()
     ScanFolders_HandleEvents($msg)
 	ScanFolders_HandleButtonLogic($msg)
 	Tab_App_HandleEvents($msg)
+	Tab_EnvVars_HandleEvents($msg)
 	Ignore_HandleEvents($msg)
 
     ; Handle OK/Cancel buttons
