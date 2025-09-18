@@ -227,6 +227,11 @@ Func _ScanFolders_AddItem()
     Local $depth = GUICtrlRead($g_ScanDepthCombo)
     Local $ext   = GUICtrlRead($g_ScanExtEdit)
     If $folder = "" Then Return
+	
+	If StringStripWS($ext, 3) = "" Then
+        $ext = "exe"
+        GUICtrlSetData($g_ScanExtEdit, $ext)
+    EndIf
 
     If _ScanFolders_FindItemIdx($folder, $depth, $ext) <> -1 Then Return
 
@@ -280,6 +285,7 @@ Func Tab_ScanFolders_Save()
         IniWrite($g_SettingsIni, "ScannedPaths", "Scan" & ($i + 1) & "Depth", $g_ScanItems[$i][1])
         IniWrite($g_SettingsIni, "ScannedPaths", "Scan" & ($i + 1) & "Ext", $g_ScanItems[$i][2])
     Next
+	RemoveExtraBlankLines($g_SettingsIni)
 EndFunc
 
 ; ---- BUTTON LOGIC INTEGRATION ----
