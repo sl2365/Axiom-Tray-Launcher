@@ -6,7 +6,7 @@
 ;*****************************************
 #AutoIt3Wrapper_icon=AxiomTrayIcon.ico
 #AutoIt3Wrapper_Res_FileVersion_AutoIncrement=Y
-#AutoIt3Wrapper_Res_Fileversion=0.0.3.286
+#AutoIt3Wrapper_Res_Fileversion=0.0.3.295
 #AutoIt3Wrapper_Res_ProductVersion=3.3.16.1
 #AutoIt3Wrapper_Res_Description=Axiom Tray Launcher
 #AutoIt3Wrapper_Res_LegalCopyright=sl23
@@ -71,10 +71,10 @@ While 1
         EndSwitch
     EndIf
 	
-	If $g_EnvVarsLabelTimer > 0 And TimerDiff($g_EnvVarsLabelTimer) > 3000 Then
-		GUICtrlSetState($g_EnvVarsLabelCopied, $GUI_HIDE)
-		$g_EnvVarsLabelTimer = -1
-	EndIf
+;~ 	If $g_EnvVarsLabelTimer > 0 And TimerDiff($g_EnvVarsLabelTimer) > 3000 Then
+;~ 		GUICtrlSetState($g_EnvVarsLabelCopied, $GUI_HIDE)
+;~ 		$g_EnvVarsLabelTimer = -1
+;~ 	EndIf
 WEnd
 
 Func MonitorApps()
@@ -109,12 +109,12 @@ Func MonitorApps()
         EndIf
 
         ; Handle cleanup for exited app
-;~         If $isSandboxie <> 1 Then
-;~             ;ConsoleWrite("MonitorApps: Removing symlinks for slot " & $i & " (non-sandboxed)." & @CRLF)
-;~             _SymLink_RemoveAppSymlinks($catIni, $appName, $g_SettingsFile)
-;~         Else
-;~             ;ConsoleWrite("MonitorApps: Skipping symlink removal for slot " & $i & " (sandboxed)." & @CRLF)
-;~         EndIf
+        If $isSandboxie <> 1 Then
+            ;ConsoleWrite("MonitorApps: Removing symlinks for slot " & $i & " (non-sandboxed)." & @CRLF)
+            _SymLink_RemoveAppSymlinks($catIni, $appName, $g_SettingsFile)
+        Else
+            ;ConsoleWrite("MonitorApps: Skipping symlink removal for slot " & $i & " (sandboxed)." & @CRLF)
+        EndIf
 
         $g_MonitoredApps[$i][0] = 0 ; Mark slot as cleared (PID=0)
         ;ConsoleWrite("MonitorApps: Marked slot " & $i & " as cleared (PID=0)." & @CRLF)
