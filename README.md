@@ -3,6 +3,15 @@ Axiom Tray Launcher is a powerful and flexible Windows utility that allows you t
 
 ---
 
+## Uses:
+- Combine all portable menu apps into a single menu.
+- Launch specific apps via Sandboxie.
+- Launch specific apps with Junctions/SymLinks.
+- Create a complete set up of all your Junctions/SymLinks. Add and remove with a single click.
+- Fully portable.
+
+---
+
 ## Features:
 - **Customizable Tray Menu:** Organize and launch your applications, files, and scripts directly from the system tray.
 - **Portable:** Full relative path support throughout the app.
