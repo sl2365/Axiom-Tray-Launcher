@@ -2,6 +2,7 @@
 ; Generates Windows shortcuts for menu items with full variable substitution, including SetEnvN and cross-INI references
 
 #include "Utils.au3"
+#include "TrayMenu.au3"
 
 Func _Shortcuts_CreateShortcut($target, $lnkPath, $args, $workDir)
     Local $oShell = ObjCreate("WScript.Shell")
@@ -38,7 +39,12 @@ Func _Shortcuts_ResolveVars($text, $vars)
         For $i = 0 To UBound($matches) - 1
             Local $name = $matches[$i]
             If $vars.Exists($name) Then
-                $resolved = StringReplace($resolved, "%" & $name & "%", $vars.Item($name))
+                Local $value = $vars.Item($name)
+                ; If this variable looks like a path, resolve it
+                If StringLeft($value, 2) = "?:" Then
+                    $value = _ResolvePath($value, @ScriptDir)
+                EndIf
+                $resolved = StringReplace($resolved, "%" & $name & "%", $value)
             EndIf
         Next
     EndIf
@@ -95,7 +101,9 @@ Func _Shortcuts_GenerateLinks($categories, $apps, $settings)
             Else
                 $target = @ScriptFullPath ; fallback: launcher itself
             EndIf
-            ; --- Arguments: Use full user-specified string, substitute variables ---
+            $target = _ResolvePath($target, @ScriptDir)
+
+            ; --- Arguments: Use full user-specified string, substitute variables. DO NOT use _ResolvePath! ---
             Local $argsRaw = ""
             If $vars.Exists("Arguments") Then $argsRaw = $vars.Item("Arguments")
             Local $args = ""
@@ -113,13 +121,24 @@ Func _Shortcuts_GenerateLinks($categories, $apps, $settings)
                     EndIf
                 EndIf
             EndIf
+            ; DO NOT call _ResolvePath on $args!
+
             ; --- WorkDir: resolve if present, fallback to @ScriptDir ---
             Local $workDir = @ScriptDir
             If $vars.Exists("WorkDir") And $vars.Item("WorkDir") <> "" Then
                 $workDir = _Shortcuts_ResolveVars($vars.Item("WorkDir"), $vars)
+                $workDir = _ResolvePath($workDir, @ScriptDir)
             EndIf
+
             ; --- Shortcut path ---
             Local $lnkPath = $catFolder & "\" & $appName & ".lnk"
+
+            ; --- Debug output ---
+;~             ConsoleWrite("Shortcut: " & $lnkPath & @CRLF)
+;~             ConsoleWrite("Target: " & $target & @CRLF)
+;~             ConsoleWrite("Arguments: " & $args & @CRLF)
+;~             ConsoleWrite("WorkDir: " & $workDir & @CRLF)
+
             ; --- Create shortcut ---
             _Shortcuts_CreateShortcut($target, $lnkPath, $args, $workDir)
             $count += 1
