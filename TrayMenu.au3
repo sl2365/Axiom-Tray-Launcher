@@ -109,7 +109,7 @@ Func _TrayMenu_Build(ByRef $categories, ByRef $apps, ByRef $settings)
     $g_TrayItemMap.RemoveAll()
     $g_CategoryMenus.RemoveAll()
     $g_TrayMenuTitle = TrayCreateMenu("♾️ Axiom Menu")
-    $g_TrayReload    = TrayCreateItem("🔄 Reload Menu", $g_TrayMenuTitle)
+;~     $g_TrayReload    = TrayCreateItem("🔄 Reload Menu", $g_TrayMenuTitle)
     $g_TraySettings  = TrayCreateItem("⚙️ Settings", $g_TrayMenuTitle)
     $g_TrayCreateGlobalLinks = TrayCreateItem("➕ Create Global Symlinks", $g_TrayMenuTitle)
     $g_TrayRemoveGlobalLinks = TrayCreateItem("➖ Remove Global Symlinks", $g_TrayMenuTitle)
@@ -210,7 +210,7 @@ Func TrayUI_Destroy()
     Next
 
     If IsDeclared("g_TrayMenuTitle") And $g_TrayMenuTitle Then TrayItemDelete($g_TrayMenuTitle)
-    If IsDeclared("g_TrayReload") And $g_TrayReload Then TrayItemDelete($g_TrayReload)
+;~     If IsDeclared("g_TrayReload") And $g_TrayReload Then TrayItemDelete($g_TrayReload)
     If IsDeclared("g_TraySettings") And $g_TraySettings Then TrayItemDelete($g_TraySettings)
     If IsDeclared("g_TrayScan") And $g_TrayScan Then TrayItemDelete($g_TrayScan)
     If IsDeclared("g_TrayCreateGlobalLinks") And $g_TrayCreateGlobalLinks Then TrayItemDelete($g_TrayCreateGlobalLinks)
@@ -354,8 +354,8 @@ EndFunc
 Func _TrayMenu_HandleEvents(ByRef $settings, ByRef $categories, ByRef $apps)
     Local $msg = TrayGetMsg()
     Switch $msg
-        Case $g_TrayReload
-            _TrayMenu_RefreshFull()
+;~         Case $g_TrayReload
+;~             _TrayMenu_RefreshFull()
         Case $g_TraySettings
             ShowSettingsGUI()
 			While $hSettingsGUI <> 0
