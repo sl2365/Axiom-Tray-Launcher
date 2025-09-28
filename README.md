@@ -13,21 +13,21 @@ Axiom Tray Launcher is a powerful and flexible Windows utility that allows you t
 ---
 
 ## Features:
-- **Customizable Tray Menu:** Organize and launch your applications, files, and scripts directly from the system tray.
-- **Portable:** Full relative path support throughout the app.
-- **Sandboxie support:** Supports launching apps via Sandboxie-Plus, just add the path to SandMan.exe, specify the sandbox name and enable Sandboxie in the settings.
-- **Specify scan locations:** Folder scanning for instant listing of all apps/files within a folder, includes recursive scanning. You can also set a filter to scan for certain file types, default is EXE.
-- **Blacklist:** Set up a list to exclude apps/files during scanning.
-- **Categories:** Organise apps into categories. The default category is the scanned folder name. You can change this on a per-app basis.
-- **Favourites:** For easier access, you can set apps as "Favourite" so it shows below categories.
-- **Hide:** Hide unwanted apps. You may not want to ignore but temporarily hide some apps.
-- **Shortcut Generation:** Automatically generate shortcuts for apps and files, with easy configuration. Doesn't create shortcuts for hidden apps.
-- **Environment Variable Management:** View, copy, and use Windows environment variables in paths and shortcuts, or create your own.
-- **Symlink Management:** Create, monitor, and clean up symbolic links and junctions for global or per-app use.
-- **Automatic Cleanup:** Cleans up symlinks and resources on exit or when monitored apps close.
-- **Update Checker:** Built-in updater checks for new releases.
-- **Settings GUI:** Intuitive settings window for managing categories, environment variables, ignored items, and more.
-- **Per-App Configuration:** Customize symlinks and settings for individual apps.
+- **Customizable Tray Menu -** Organize and launch your applications, files, and scripts directly from the system tray.
+- **Portable -** Full relative path support throughout the app.
+- **Sandboxie support -** Supports launching apps via Sandboxie-Plus, just add the path to SandMan.exe, specify the sandbox name and enable Sandboxie in the settings.
+- **Specify scan locations -** Folder scanning for instant listing of all apps/files within a folder, includes recursive scanning. You can also set a filter to scan for certain file types, default is EXE.
+- **Blacklist -** Set up a list to exclude apps/files during scanning.
+- **Categories -** Organise apps into categories. The default category is the scanned folder name. You can change this on a per-app basis.
+- **Favourites -** For easier access, you can set apps as "Favourite" so it shows below categories.
+- **Hide -** Hide unwanted apps. You may not want to ignore but temporarily hide some apps.
+- **Shortcut Generation -** Automatically generate shortcuts for apps and files, with easy configuration. Doesn't create shortcuts for hidden apps.
+- **Environment Variable Management -** View, copy, and use Windows environment variables in paths and shortcuts, or create your own.
+- **Symlink Management -** Create, monitor, and clean up symbolic links and junctions for global or per-app use.
+- **Automatic Cleanup -** Cleans up symlinks and resources on exit or when monitored apps close.
+- **Update Checker -** Built-in updater checks for new releases.
+- **Settings GUI -** Intuitive settings window for managing categories, environment variables, ignored items, and more.
+- **Per-App Configuration -** Customize symlinks and settings for individual apps.
 
 ---
 
