@@ -53,12 +53,12 @@ Axiom Tray Launcher is a powerful and flexible Windows utility that allows you t
 
 - Open the Settings from the tray menu.
 - Use the tabs to:
-  - **Global:** Set user variables and main options.
-  - **Scan Folders:** Add or scan folders for quick launching. (100 Max)
-  - **Apps:** Manage your list of applications and their configurations.
-  - **Ignore:** Exclude specific items from menus or scans. (300 Max)
-  - **Env Vars:** View and copy system environment variables.
-  - **About:** Check for updates and access documentation.
+  - **Global -** Set user variables and main options.
+  - **Scan Folders -** Add or scan folders for quick launching. (100 Max)
+  - **Apps -** Manage your list of applications and their configurations.
+  - **Ignore -** Exclude specific items from menus or scans. (300 Max)
+  - **Env Vars -** View and copy system environment variables.
+  - **About -** Check for updates and access documentation.
 
 ### Symlink and Variables Management
 
